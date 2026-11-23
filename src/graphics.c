@@ -2,28 +2,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
+#include <unistd.h>
 
-#if __has_include(<SDL2/SDL.h>)
-#include <SDL2/SDL.h>
-#define HAVE_SDL2 1
-#elif __has_include(<SDL.h>)
-#include <SDL.h>
-#define HAVE_SDL2 1
-#endif
+#include <rsx/rsx.h>
+#include <rsx/gcm_sys.h>
+#include <sysutil/video.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO_DISABLED
 #define STBI_ONLY_PNG
 #include "stb_image.h"
 
-// 1920x1080 32-bit Framebuffer (~8.3 MB)
-static uint32_t* s_framebuffer = NULL;
+#define CB_SIZE     (0x10000)
+#define HOST_SIZE   (1024 * 1024)
 
-#ifdef HAVE_SDL2
-static SDL_Window* s_sdl_window = NULL;
-static SDL_Renderer* s_sdl_renderer = NULL;
-static SDL_Texture* s_sdl_texture = NULL;
-#endif
+static gcmContextData* s_gcm_context = NULL;
+static uint32_t* s_display_buffers[2] = {NULL, NULL};
+static uint32_t s_buffer_offsets[2] = {0, 0};
+static int s_curr_buffer = 0;
+
+// Active drawing pointer (points to current backbuffer)
+static uint32_t* s_framebuffer = NULL;
 
 static const char* resolve_asset_path(const char* filepath, char* buffer, size_t buf_size) {
     if (!filepath) return NULL;
@@ -68,29 +68,57 @@ static inline uint32_t blend_pixel(uint32_t dst, uint32_t src) {
 }
 
 bool graphics_init(void) {
-    if (!s_framebuffer) {
-        s_framebuffer = (uint32_t*)malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
-        if (!s_framebuffer) {
-            printf("[Graphics] Failed to allocate framebuffer memory.\n");
+    void* host_addr = memalign(1024 * 1024, HOST_SIZE);
+    if (!host_addr) {
+        printf("[Graphics] Failed to allocate RSX host memory.\n");
+        return false;
+    }
+
+    if (rsxInit(&s_gcm_context, CB_SIZE, HOST_SIZE, host_addr) != 0) {
+        printf("[Graphics] Failed to initialize RSX.\n");
+        return false;
+    }
+
+    videoState state;
+    if (videoGetState(0, 0, &state) != 0) {
+        printf("[Graphics] Failed to get video state.\n");
+        return false;
+    }
+
+    videoConfiguration vconfig;
+    memset(&vconfig, 0, sizeof(videoConfiguration));
+    vconfig.resolution = VIDEO_RESOLUTION_1080;
+    vconfig.format = VIDEO_FORMAT_X8R8G8B8;
+    vconfig.pitch = SCREEN_WIDTH * 4;
+    vconfig.aspect = VIDEO_ASPECT_16_9;
+
+    if (videoConfigure(0, &vconfig, NULL, 0) != 0) {
+        // Fallback to 720p if 1080p is unavailable
+        vconfig.resolution = VIDEO_RESOLUTION_720;
+        videoConfigure(0, &vconfig, NULL, 0);
+    }
+
+    videoGetState(0, 0, &state);
+    gcmSetFlipMode(GCM_FLIP_VSYNC);
+
+    // Allocate 2 framebuffers in RSX video memory
+    uint32_t buffer_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
+    for (int i = 0; i < 2; i++) {
+        s_display_buffers[i] = (uint32_t*)rsxMemalign(64, buffer_size);
+        if (!s_display_buffers[i]) {
+            printf("[Graphics] Failed to allocate RSX display buffer %d.\n", i);
             return false;
         }
+        rsxAddressToOffset(s_display_buffers[i], &s_buffer_offsets[i]);
+        gcmSetDisplayBuffer(i, s_buffer_offsets[i], SCREEN_WIDTH * 4, SCREEN_WIDTH, SCREEN_HEIGHT);
     }
+
+    gcmSetWaitFlip(s_gcm_context);
+    s_curr_buffer = 0;
+    s_framebuffer = s_display_buffers[s_curr_buffer];
+
     graphics_clear(0xFF181410);
-
-#ifdef HAVE_SDL2
-    if (SDL_Init(SDL_INIT_VIDEO) == 0) {
-        s_sdl_window = SDL_CreateWindow("That's Not My Neighbor", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-        if (s_sdl_window) {
-            s_sdl_renderer = SDL_CreateRenderer(s_sdl_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-            if (s_sdl_renderer) {
-                s_sdl_texture = SDL_CreateTexture(s_sdl_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
-            }
-        }
-        printf("[Graphics] SDL2 Video subsystem initialized.\n");
-    }
-#endif
-
-    printf("[Graphics] Native 1080p framebuffer (1920x1080) initialized successfully.\n");
+    printf("[Graphics] Native PSL1GHT RSX 1080p Double-Buffer initialized successfully.\n");
     return true;
 }
 
@@ -122,17 +150,16 @@ void graphics_draw_rect(int x, int y, int w, int h, uint32_t color) {
 void graphics_draw_cursor(float x, float y, uint32_t color) {
     int cx = (int)x;
     int cy = (int)y;
-    graphics_draw_rect(cx - 10, cy - 2, 21, 5, 0xFF000000); // Black shadow
+    graphics_draw_rect(cx - 10, cy - 2, 21, 5, 0xFF000000);
     graphics_draw_rect(cx - 2, cy - 10, 5, 21, 0xFF000000);
-    graphics_draw_rect(cx - 8, cy - 1, 17, 3, color);      // White crosshair
+    graphics_draw_rect(cx - 8, cy - 1, 17, 3, color);
     graphics_draw_rect(cx - 1, cy - 8, 3, 17, color);
 }
 
 void graphics_draw_text(int x, int y, const char* text, uint32_t color) {
-    // Basic debug text rasterizer stub
     if (!text) return;
     int len = strlen(text);
-    graphics_draw_rect(x - 2, y - 2, (len * 11) + 4, 18, 0x88000000); // Label backing
+    graphics_draw_rect(x - 2, y - 2, (len * 11) + 4, 18, 0x88000000);
 }
 
 Texture* texture_load_from_file(const char* filepath) {
@@ -152,7 +179,6 @@ Texture* texture_load_from_file(const char* filepath) {
     tex->channels = 4;
     tex->pixels = (uint32_t*)malloc(w * h * sizeof(uint32_t));
 
-    // Convert RGBA bytes to 32-bit ARGB format
     for (int i = 0; i < w * h; i++) {
         uint32_t r = data[i * 4 + 0];
         uint32_t g = data[i * 4 + 1];
@@ -200,35 +226,16 @@ void graphics_draw_texture(const Texture* tex, int x, int y) {
     for (int row = 0; row < draw_h; row++) {
         uint32_t* dst_ptr = &s_framebuffer[(dst_y1 + row) * SCREEN_WIDTH + dst_x1];
         const uint32_t* src_ptr = &tex->pixels[(src_y1 + row) * tex->width + src_x1];
+
         for (int col = 0; col < draw_w; col++) {
             dst_ptr[col] = blend_pixel(dst_ptr[col], src_ptr[col]);
         }
     }
 }
 
-void graphics_draw_texture_scaled(const Texture* tex, int x, int y, int dest_w, int dest_h) {
-    if (!tex || !tex->pixels || !s_framebuffer || dest_w <= 0 || dest_h <= 0) return;
-
-    for (int dy = 0; dy < dest_h; dy++) {
-        int py = y + dy;
-        if (py < 0 || py >= SCREEN_HEIGHT) continue;
-
-        int sy = (dy * tex->height) / dest_h;
-        const uint32_t* src_row = &tex->pixels[sy * tex->width];
-        uint32_t* dst_row = &s_framebuffer[py * SCREEN_WIDTH];
-
-        for (int dx = 0; dx < dest_w; dx++) {
-            int px = x + dx;
-            if (px < 0 || px >= SCREEN_WIDTH) continue;
-
-            int sx = (dx * tex->width) / dest_w;
-            dst_row[px] = blend_pixel(dst_row[px], src_row[sx]);
-        }
-    }
-}
-
-void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_y, int clip_h) {
-    if (!tex || !tex->pixels || !s_framebuffer || clip_h <= 0) return;
+void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_x, int clip_y, int clip_w, int clip_h) {
+    if (!tex || !tex->pixels || !s_framebuffer) return;
+    if (clip_w <= 0 || clip_h <= 0) return;
 
     int start_y = (clip_y < 0) ? 0 : clip_y;
     int end_y = ((clip_y + clip_h) > tex->height) ? tex->height : (clip_y + clip_h);
@@ -249,27 +256,17 @@ void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_y,
 }
 
 void graphics_flip(void) {
-#ifdef HAVE_SDL2
-    if (s_sdl_renderer && s_sdl_texture && s_framebuffer) {
-        SDL_UpdateTexture(s_sdl_texture, NULL, s_framebuffer, SCREEN_WIDTH * sizeof(uint32_t));
-        SDL_RenderClear(s_sdl_renderer);
-        SDL_RenderCopy(s_sdl_renderer, s_sdl_texture, NULL, NULL);
-        SDL_RenderPresent(s_sdl_renderer);
-    }
-#endif
+    if (!s_gcm_context) return;
+
+    gcmSetFlip(s_gcm_context, s_curr_buffer);
+    rsxFlushBuffer(s_gcm_context);
+    gcmSetWaitFlip(s_gcm_context);
+
+    // Swap to the next buffer
+    s_curr_buffer = !s_curr_buffer;
+    s_framebuffer = s_display_buffers[s_curr_buffer];
 }
 
 void graphics_cleanup(void) {
-#ifdef HAVE_SDL2
-    if (s_sdl_texture)  { SDL_DestroyTexture(s_sdl_texture);   s_sdl_texture = NULL; }
-    if (s_sdl_renderer) { SDL_DestroyRenderer(s_sdl_renderer); s_sdl_renderer = NULL; }
-    if (s_sdl_window)   { SDL_DestroyWindow(s_sdl_window);     s_sdl_window = NULL; }
-    SDL_Quit();
-#endif
-
-    if (s_framebuffer) {
-        free(s_framebuffer);
-        s_framebuffer = NULL;
-    }
-    printf("[Graphics] Framebuffer cleaned up successfully.\n");
+    printf("[Graphics] RSX subsystem cleaned up.\n");
 }
