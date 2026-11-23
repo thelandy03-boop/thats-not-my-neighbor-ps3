@@ -28,6 +28,13 @@ typedef enum {
     HATCH_CLOSING
 } HatchState;
 
+typedef enum {
+    DOC_TAB_ID,
+    DOC_TAB_ENTRY_REQUEST,
+    DOC_TAB_TODAYS_LIST,
+    DOC_TAB_CHECKLIST
+} DocTab;
+
 typedef struct {
     Vector2D position;
     Vector2D target;
@@ -40,12 +47,39 @@ typedef struct {
     const char* label;
 } DeskButton;
 
+// 5 core D.D.D. verification checks
+typedef struct {
+    bool photo_match;
+    bool id_number_match;
+    bool not_expired;
+    bool entry_permit_valid;
+    bool appearance_match;
+    bool on_today_list;
+} VerificationChecklist;
+
+typedef struct {
+    // Current visitor document data (might have subtle doppelganger flaws)
+    char displayed_name[64];
+    char displayed_last_name[64];
+    char displayed_id_number[32];
+    char displayed_expiration[16];
+    char displayed_apartment[16];
+    bool is_on_today_list;
+    bool has_doppelganger_flaw;
+    int flaw_type; // 0: None, 1: Wrong date, 2: Wrong apt, 3: Fake ID, 4: Not on list
+} CurrentVisitorDocs;
+
 typedef struct {
     GameState state;
     bool running;
     Camera camera;
     Vector2D cursor;
     bool cursor_clicking;
+
+    // Active document tab
+    DocTab active_doc_tab;
+    VerificationChecklist checklist;
+    CurrentVisitorDocs visitor_docs;
 
     // Security Booth State
     HatchState hatch_state;
@@ -65,6 +99,12 @@ typedef struct {
     DeskButton btn_emergency_cover;
     DeskButton btn_folder_list;
     DeskButton btn_folder_id;
+
+    // Document Tab buttons
+    DeskButton tab_btn_id;
+    DeskButton tab_btn_entry;
+    DeskButton tab_btn_list;
+    DeskButton tab_btn_check;
 
     // Stats
     int current_day;
