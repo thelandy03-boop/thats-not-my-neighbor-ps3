@@ -94,7 +94,7 @@ thats-not-my-neighbor-ps3/
 - [PS3DEV PSL1GHT v2 Toolchain](https://github.com/ps3dev/ps3toolchain) (`ppu-gcc`, `make_self`, `pkg.py`).
 - Alternatively, compile with Docker/Podman using `hldtux/ps3dev-sdl2:latest`.
 
-### Compilation
+### Compilation for PS3 (PSL1GHT v2)
 ```bash
 # Build ELF and SELF executable
 make
@@ -107,6 +107,34 @@ make pkg
 1. Open RPCS3.
 2. Drag and drop `thats-not-my-neighbor.pkg` into RPCS3 to install.
 3. Or boot directly: **File -> Boot (S)ELF -> `thats-not-my-neighbor.self`**.
+
+---
+
+## 💻 Local PC Desktop Target (Rapid Pair Programming)
+
+You can compile and run the demake directly on your Linux development machine (Parrot OS, Ubuntu, Debian, Arch) in 2 seconds using **SDL2**:
+
+```bash
+# 1. Compile native PC binary
+make desktop
+
+# 2. Run immediately in 720p 60FPS window
+make run-desktop
+# or directly:
+./thats-not-my-neighbor-desktop
+```
+
+### Desktop Controls:
+* **Mouse**: Full 1:1 mouse movement smoothly drives the virtual cursor.
+  * **Left Click**: Select / Interact (DualShock ✖ Cross)
+  * **Right Click**: Cancel / Close document / Hang up (DualShock ● Circle)
+* **Keyboard**:
+  * **Arrow Keys / WASD**: D-Pad navigation / Nudge cursor
+  * **Enter / Space**: Confirm / Click (✖)
+  * **Escape / Backspace**: Back / Close (●)
+  * **Tab / Shift**: Change directory floors & manual tabs (L1 / R1)
+* **Game Controller**:
+  * Plug in any USB or Bluetooth gamepad (DualShock 3/4, DualSense, Xbox). SDL2 detects and maps it automatically!
 
 ---
 

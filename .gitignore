@@ -10,6 +10,7 @@ pkg/
 *.o
 *.a
 *.d
+*-desktop
 
 # OS / Editor files
 .DS_Store

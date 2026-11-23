@@ -22,13 +22,19 @@ LIBS		:= $(TINY3D_LIB) -lgcm_sys -lio -laudio -lsysutil -lm -lc
 
 CFLAGS		:= -O2 -Wall -mcpu=cell -D_PS3 -DPSL1GHT -DLUA_COMPAT_5_3 $(INCLUDES)
 
-# Source Discovery: C Engine + Vanilla Embedded Lua 5.4 Core (excluding standalone CLIs)
-SRCS_ENGINE	:= $(wildcard src/*.c)
+# Source Discovery: C Engine + Vanilla Embedded Lua 5.4 Core (excluding standalone CLIs and desktop runner)
+SRCS_ENGINE	:= $(filter-out src/main_desktop.c, $(wildcard src/*.c))
 SRCS_LUA	:= $(filter-out src/lua/lua.c src/lua/luac.c, $(wildcard src/lua/*.c))
 SRCS		:= $(SRCS_ENGINE) $(SRCS_LUA)
 OBJS		:= $(SRCS:.c=.o)
 
-.PHONY: all clean pkg install
+# Local PC Desktop Target (SDL2 + Embedded Lua 5.4 + Vorbis)
+DESKTOP_TARGET := $(TARGET)-desktop
+HOST_CC        := gcc
+SDL_CFLAGS     := $(shell sdl2-config --cflags)
+SDL_LIBS       := $(shell sdl2-config --libs) -lSDL2_test -lvorbisfile -lvorbis -logg -lm
+
+.PHONY: all clean pkg install desktop run-desktop
 
 all: $(TARGET).self
 
@@ -70,6 +76,17 @@ $(TARGET).pkg: $(TARGET).self
 	fi
 	@echo "[PKG] Build finished successfully."
 
+# Local PC Desktop Runner Targets
+desktop: $(DESKTOP_TARGET)
+
+$(DESKTOP_TARGET): src/main_desktop.c $(SRCS_LUA)
+	@echo "[HOST_CC] Compiling PC desktop target with SDL2..."
+	$(HOST_CC) -O2 -Wall -Isrc -Isrc/lua $(SDL_CFLAGS) $^ $(SDL_LIBS) -o $@
+	@echo "[HOST_CC] PC target successfully built: ./$(DESKTOP_TARGET)"
+
+run-desktop: desktop
+	./$(DESKTOP_TARGET)
+
 clean:
 	@echo "[CLEAN] Removing build artifacts..."
-	@rm -rf $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg/
+	@rm -rf $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg pkg/ $(DESKTOP_TARGET)

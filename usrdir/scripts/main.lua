@@ -291,12 +291,17 @@ end
 function game_update()
     local pad = get_pad_input()
 
-    -- 1. Virtual Cursor Movement via Left Analog Stick
-    if math.abs(pad.analog_lx) > 0.05 then
-        game.cursor.x = game.cursor.x + (pad.analog_lx * game.cursor.speed)
-    end
-    if math.abs(pad.analog_ly) > 0.05 then
-        game.cursor.y = game.cursor.y + (pad.analog_ly * game.cursor.speed)
+    -- 1. Virtual Cursor Movement (Mouse or Left Analog Stick)
+    if pad.mouse_moved and pad.mouse_x and pad.mouse_y then
+        game.cursor.x = pad.mouse_x
+        game.cursor.y = pad.mouse_y
+    else
+        if math.abs(pad.analog_lx) > 0.05 then
+            game.cursor.x = game.cursor.x + (pad.analog_lx * game.cursor.speed)
+        end
+        if math.abs(pad.analog_ly) > 0.05 then
+            game.cursor.y = game.cursor.y + (pad.analog_ly * game.cursor.speed)
+        end
     end
 
     if game.cursor.x < 10.0  then game.cursor.x = 10.0 end
