@@ -10,9 +10,19 @@
 #include "stb_image.h"
 
 #if defined(__CELLOS_LV2__) || defined(_PS3)
+#if __has_include(<tiny3d.h>)
 #include <tiny3d.h>
+#define HAVE_TINY3D 1
+#elif __has_include(<tiny3d/tiny3d.h>)
+#include <tiny3d/tiny3d.h>
+#define HAVE_TINY3D 1
+#endif
+#if __has_include(<sysutil/video.h>)
 #include <sysutil/video.h>
-#else
+#endif
+#endif
+
+#ifndef HAVE_TINY3D
 // Mock definitions for host-side compilation / static analysis
 typedef uint32_t u32;
 typedef uint8_t  u8;

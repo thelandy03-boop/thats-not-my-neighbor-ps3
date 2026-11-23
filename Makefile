@@ -15,10 +15,10 @@ CC			:= ppu-gcc
 CXX			:= ppu-g++
 MAKE_SELF	:= make_self
 PKG_PY		:= pkg.py
-
 INCLUDES	:= -Isrc -Isrc/lua -I$(PS3DEV)/include -I$(PORTLIBS)/include -I$(PS3DEV)/ppu/include
 LIBDIRS		:= -L$(PS3DEV)/lib -L$(PORTLIBS)/lib -L$(PS3DEV)/ppu/lib
-LIBS		:= -ltiny3d -lgcm_sys -lio -laudio -lsysutil -lm -lc
+TINY3D_LIB	:= $(shell for p in $(PORTLIBS)/lib $(PS3DEV)/lib $(PS3DEV)/ppu/lib; do if [ -f $$p/libtiny3d.a ]; then echo "-ltiny3d"; break; fi; done)
+LIBS		:= $(TINY3D_LIB) -lgcm_sys -lio -laudio -lsysutil -lm -lc
 
 CFLAGS		:= -O2 -Wall -mcpu=cell -D_PS3 -DPSL1GHT -DLUA_COMPAT_5_3 $(INCLUDES)
 

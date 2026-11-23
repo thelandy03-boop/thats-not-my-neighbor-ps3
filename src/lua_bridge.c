@@ -7,9 +7,10 @@
 #include <string.h>
 #include <time.h>
 
+#include <sys/time.h>
+
 #if defined(__CELLOS_LV2__) || defined(_PS3)
 #include <io/pad.h>
-#include <sys/time_util.h>
 #endif
 
 typedef struct {
@@ -184,15 +185,15 @@ static int l_stop_music(lua_State* L) {
 }
 
 static int l_get_ticks_ms(lua_State* L) {
-    static struct timespec start_ts = {0, 0};
-    if (start_ts.tv_sec == 0 && start_ts.tv_nsec == 0) {
-        clock_gettime(CLOCK_MONOTONIC, &start_ts);
+    static struct timeval start_tv = {0, 0};
+    if (start_tv.tv_sec == 0 && start_tv.tv_usec == 0) {
+        gettimeofday(&start_tv, NULL);
     }
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
+    struct timeval now;
+    gettimeofday(&now, NULL);
 
-    double ms = (double)(now.tv_sec - start_ts.tv_sec) * 1000.0 +
-                (double)(now.tv_nsec - start_ts.tv_nsec) / 1000000.0;
+    double ms = (double)(now.tv_sec - start_tv.tv_sec) * 1000.0 +
+                (double)(now.tv_usec - start_tv.tv_usec) / 1000.0;
     lua_pushnumber(L, ms);
     return 1;
 }
