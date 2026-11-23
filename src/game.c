@@ -1,6 +1,7 @@
 #include "game.h"
 #include "graphics.h"
 #include "input.h"
+#include "audio.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -166,26 +167,32 @@ void game_update(GameContext* ctx) {
         if (ctx->state == STATE_OFFICE_BOOTH) {
             if (ctx->btn_door_unlock.hovered && ctx->hatch_state != HATCH_OPEN) {
                 ctx->hatch_state = HATCH_OPENING;
+                audio_play_sfx(SFX_WINDOW_SLIDE);
             } else if (ctx->btn_door_lock.hovered && ctx->hatch_state != HATCH_CLOSED) {
                 ctx->hatch_state = HATCH_CLOSING;
+                audio_play_sfx(SFX_WINDOW_SLIDE);
             } else if (ctx->btn_emergency_cover.hovered) {
                 ctx->emergency_cover_open = !ctx->emergency_cover_open;
+                audio_play_sfx(SFX_ACCEPT_BUTTON);
             } else if (ctx->emergency_cover_open && ctx->btn_emergency.hovered) {
                 ctx->alarm_active = true;
                 ctx->state = STATE_EMERGENCY_ALARM;
+                audio_play_sfx(SFX_SIREN_ALARM);
             } else if (ctx->btn_folder_id.hovered) {
                 ctx->active_doc_tab = DOC_TAB_ID;
                 ctx->state = STATE_DOCUMENT_INSPECT;
+                audio_play_sfx(SFX_FOLDER_PICKUP);
             } else if (ctx->btn_folder_list.hovered) {
                 ctx->active_doc_tab = DOC_TAB_TODAYS_LIST;
                 ctx->state = STATE_DOCUMENT_INSPECT;
+                audio_play_sfx(SFX_FOLDER_PICKUP);
             }
         } else if (ctx->state == STATE_DOCUMENT_INSPECT) {
             // Tab clicks
-            if (ctx->tab_btn_id.hovered) ctx->active_doc_tab = DOC_TAB_ID;
-            else if (ctx->tab_btn_entry.hovered) ctx->active_doc_tab = DOC_TAB_ENTRY_REQUEST;
-            else if (ctx->tab_btn_list.hovered) ctx->active_doc_tab = DOC_TAB_TODAYS_LIST;
-            else if (ctx->tab_btn_check.hovered) ctx->active_doc_tab = DOC_TAB_CHECKLIST;
+            if (ctx->tab_btn_id.hovered) { ctx->active_doc_tab = DOC_TAB_ID; audio_play_sfx(SFX_ACCEPT_BUTTON); }
+            else if (ctx->tab_btn_entry.hovered) { ctx->active_doc_tab = DOC_TAB_ENTRY_REQUEST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
+            else if (ctx->tab_btn_list.hovered) { ctx->active_doc_tab = DOC_TAB_TODAYS_LIST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
+            else if (ctx->tab_btn_check.hovered) { ctx->active_doc_tab = DOC_TAB_CHECKLIST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
 
             // Checklist checkboxes toggles (Checklist Tab)
             if (ctx->active_doc_tab == DOC_TAB_CHECKLIST) {
@@ -196,12 +203,12 @@ void game_update(GameContext* ctx) {
                 Rect2D r5 = { 400, 520, 40, 40 };
                 Rect2D r6 = { 400, 590, 40, 40 };
 
-                if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r1)) ctx->checklist.photo_match = !ctx->checklist.photo_match;
-                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r2)) ctx->checklist.id_number_match = !ctx->checklist.id_number_match;
-                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r3)) ctx->checklist.not_expired = !ctx->checklist.not_expired;
-                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r4)) ctx->checklist.entry_permit_valid = !ctx->checklist.entry_permit_valid;
-                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r5)) ctx->checklist.appearance_match = !ctx->checklist.appearance_match;
-                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r6)) ctx->checklist.on_today_list = !ctx->checklist.on_today_list;
+                if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r1)) { ctx->checklist.photo_match = !ctx->checklist.photo_match; audio_play_sfx(SFX_PEN_WRITE); }
+                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r2)) { ctx->checklist.id_number_match = !ctx->checklist.id_number_match; audio_play_sfx(SFX_PEN_WRITE); }
+                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r3)) { ctx->checklist.not_expired = !ctx->checklist.not_expired; audio_play_sfx(SFX_PEN_WRITE); }
+                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r4)) { ctx->checklist.entry_permit_valid = !ctx->checklist.entry_permit_valid; audio_play_sfx(SFX_PEN_WRITE); }
+                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r5)) { ctx->checklist.appearance_match = !ctx->checklist.appearance_match; audio_play_sfx(SFX_PEN_WRITE); }
+                else if (point_in_rect(ctx->cursor.x, ctx->cursor.y, r6)) { ctx->checklist.on_today_list = !ctx->checklist.on_today_list; audio_play_sfx(SFX_PEN_WRITE); }
             }
         }
     } else if (!pad->cross) {
@@ -212,28 +219,31 @@ void game_update(GameContext* ctx) {
     // L1/R1 in document view switches tabs, in booth opens/closes hatch
     if (ctx->state == STATE_DOCUMENT_INSPECT) {
         if (pad->l1) {
-            if (ctx->active_doc_tab > 0) ctx->active_doc_tab--;
+            if (ctx->active_doc_tab > 0) { ctx->active_doc_tab--; audio_play_sfx(SFX_ACCEPT_BUTTON); }
         } else if (pad->r1) {
-            if (ctx->active_doc_tab < DOC_TAB_CHECKLIST) ctx->active_doc_tab++;
+            if (ctx->active_doc_tab < DOC_TAB_CHECKLIST) { ctx->active_doc_tab++; audio_play_sfx(SFX_ACCEPT_BUTTON); }
         }
     } else if (ctx->state == STATE_OFFICE_BOOTH) {
-        if (pad->l1 && ctx->hatch_state != HATCH_OPEN) ctx->hatch_state = HATCH_OPENING;
-        else if (pad->r1 && ctx->hatch_state != HATCH_CLOSED) ctx->hatch_state = HATCH_CLOSING;
+        if (pad->l1 && ctx->hatch_state != HATCH_OPEN) { ctx->hatch_state = HATCH_OPENING; audio_play_sfx(SFX_WINDOW_SLIDE); }
+        else if (pad->r1 && ctx->hatch_state != HATCH_CLOSED) { ctx->hatch_state = HATCH_CLOSING; audio_play_sfx(SFX_WINDOW_SLIDE); }
     }
 
     if (pad->square && ctx->state == STATE_OFFICE_BOOTH) {
         ctx->state = STATE_DOCUMENT_INSPECT;
+        audio_play_sfx(SFX_FOLDER_PICKUP);
     }
 
     if (pad->circle) {
         if (ctx->state == STATE_DOCUMENT_INSPECT || ctx->state == STATE_EMERGENCY_ALARM) {
             ctx->state = STATE_OFFICE_BOOTH;
+            audio_play_sfx(SFX_FOLDER_PUT_BACK);
         }
     }
 
     if (pad->triangle && ctx->state == STATE_OFFICE_BOOTH) {
         ctx->emergency_cover_open = true;
         ctx->state = STATE_EMERGENCY_ALARM;
+        audio_play_sfx(SFX_SIREN_ALARM);
     }
 }
 

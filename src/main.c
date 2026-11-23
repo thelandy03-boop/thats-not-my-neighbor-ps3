@@ -1,6 +1,7 @@
 #include "common.h"
 #include "graphics.h"
 #include "input.h"
+#include "audio.h"
 #include "game.h"
 
 int main(int argc, char* argv[]) {
@@ -17,6 +18,13 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    if (!audio_init()) {
+        printf("[TNMN-PS3] Failed to initialize audio subsystem.\n");
+    }
+
+    // Start background atmosphere audio
+    audio_play_music("Music_Dark.ogg", true);
+
     GameContext game;
     game_init(&game);
 
@@ -28,6 +36,8 @@ int main(int argc, char* argv[]) {
     }
 
     game_cleanup(&game);
+    audio_stop_music();
+    audio_cleanup();
     input_cleanup();
     graphics_cleanup();
 
