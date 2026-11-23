@@ -101,6 +101,85 @@ neighbors.database = {
         occupation = "Profesora",
         features = "Cabello largo, pecas, cara ovalada, cejas delgadas.",
         photo_asset = "Frame_photo.png"
+    },
+    {
+        key = "ROBERTSKY_PEACHMAN",
+        name = "Robertsky",
+        last_name = "Peachman",
+        id_number = "114652289730",
+        id_expiration = "12/1973",
+        apartment = "F01-02",
+        phone = "2668",
+        occupation = "Zapatero",
+        features = "Cuello largo, sin cejas, nariz grande, barba de chivo.",
+        photo_asset = "Frame_photo.png"
+    },
+    {
+        key = "ARNOLD_SCHMICHT",
+        name = "Arnold",
+        last_name = "Schmicht",
+        id_number = "778566219322",
+        id_expiration = "10/1971",
+        apartment = "F02-01",
+        phone = "5123",
+        occupation = "Escritor",
+        features = "Cejas grandes, bigote prominente, sombrero, cara redonda.",
+        photo_asset = "Frame_photo.png"
+    },
+    {
+        key = "IZAACK_GAUSS",
+        name = "Izaack",
+        last_name = "Gauss",
+        id_number = "456985512369",
+        id_expiration = "09/1965",
+        apartment = "F02-02",
+        phone = "7332",
+        occupation = "Reportero",
+        features = "Cejas grandes, sonrisa amplia, barbilla prominente.",
+        photo_asset = "Frame_photo.png"
+    },
+    {
+        key = "STEVEN_RUDBOYS",
+        name = "Steven",
+        last_name = "Rudboys",
+        id_number = "565845455965",
+        id_expiration = "02/1966",
+        apartment = "F03-03",
+        phone = "4242",
+        occupation = "Piloto",
+        features = "Nariz grande, usa lentes, cabello corto, cabeza pequena.",
+        photo_asset = "Frame_photo.png"
+    }
+}
+
+-- Complete Building Directory Organized by Floor
+neighbors.floors = {
+    [1] = {
+        name = "PISO 1",
+        apartments = {
+            { apt = "F01-01", phone = "1152", tenants = "Roman Stilnsky / Lois Stilnsky", photo = "Char_Roman_Small_Photo.png", note = "Contador / Ama de casa" },
+            { apt = "F01-02", phone = "2668", tenants = "Robertsky / Albertsky Peachman", photo = "Frame_photo.png", note = "Zapateros hermanos" },
+            { apt = "F01-03", phone = "5513", tenants = "Angus Ciprianni", photo = "Frame_photo.png", note = "Empresario prestigioso" },
+            { apt = "F01-04", phone = "6996", tenants = "Elenois / Selenne Sverchzt", photo = "Frame_photo.png", note = "Gemelas modelos" }
+        }
+    },
+    [2] = {
+        name = "PISO 2",
+        apartments = {
+            { apt = "F02-01", phone = "5123", tenants = "Arnold / Gloria Schmicht", photo = "Frame_photo.png", note = "Escritor / Banquera" },
+            { apt = "F02-02", phone = "7332", tenants = "Izaack Gauss", photo = "Frame_photo.png", note = "Periodista investigador" },
+            { apt = "F02-03", phone = "6431", tenants = "Margarette Bubbles", photo = "Frame_photo.png", note = "Costurera vecina" },
+            { apt = "F02-04", phone = "1346", tenants = "Anastacha / Nacha Mikaelys", photo = "Frame_photo.png", note = "Estudiante / Cocinera" }
+        }
+    },
+    [3] = {
+        name = "PISO 3",
+        apartments = {
+            { apt = "F03-01", phone = "1425", tenants = "Dr. W. Afton / Mia Stone", photo = "Frame_photo.png", note = "Fisico / Profesora" },
+            { apt = "F03-02", phone = "4122", tenants = "Francis Mosses", photo = "Char_Francis_Small_Photo.png", note = "Lechero del barrio" },
+            { apt = "F03-03", phone = "4242", tenants = "Steven / Mclooy Rudboys", photo = "Frame_photo.png", note = "Piloto / Retirado" },
+            { apt = "F03-04", phone = "4258", tenants = "Alf / Rafttellyn Cappuccin", photo = "Frame_photo.png", note = "Abogado / Ama de casa" }
+        }
     }
 }
 
