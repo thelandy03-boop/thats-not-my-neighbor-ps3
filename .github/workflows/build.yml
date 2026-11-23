@@ -18,30 +18,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Detect Environment & Locate PSL1GHT
-        run: |
-          echo "=== CONTAINER ENVIRONMENT ==="
-          env
-          echo "=== LOCATING Makefile.base ==="
-          find / -name "Makefile.base" 2>/dev/null || true
-          
-          # Find directory containing Makefile.base
-          BASE_DIR=$(dirname $(find / -name "Makefile.base" 2>/dev/null | head -n 1))
-          echo "Found PSL1GHT base dir: $BASE_DIR"
-          if [ -n "$BASE_DIR" ]; then
-            echo "PSL1GHT=$BASE_DIR" >> $GITHUB_ENV
-          fi
-
       - name: Compile SELF & EBOOT.BIN
         run: |
-          echo "Using PSL1GHT=$PSL1GHT"
           make clean || true
           make
 
       - name: Build Installable PS3 PKG
         run: |
           make pkg || true
-          ls -la
+          ls -lh
 
       - name: Upload PS3 Build Artifacts
         uses: actions/upload-artifact@v4
