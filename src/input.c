@@ -1,99 +1,104 @@
 #include "input.h"
 #include "common.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-#if __has_include(<io/pad.h>)
-#include <io/pad.h>
-#elif __has_include(<pad.h>)
-#include <pad.h>
-#else
-// PSL1GHT binary-compatible DualShock 3 structure definitions
-typedef struct _pad_data {
-    int len;
-    uint16_t button[4];
-    float ANA_R_H;
-    float ANA_R_V;
-    float ANA_L_H;
-    float ANA_L_V;
-} padData;
-
-typedef struct _pad_info {
-    int max;
-    int connected;
-    uint32_t info;
-    uint16_t vendor_id[7];
-    uint16_t product_id[7];
-    uint8_t status[7];
-} padInfo;
-
-#define PAD_CTRL_SELECT     0x0001
-#define PAD_CTRL_START      0x0008
-#define PAD_CTRL_UP         0x0010
-#define PAD_CTRL_RIGHT      0x0020
-#define PAD_CTRL_DOWN       0x0040
-#define PAD_CTRL_LEFT       0x0080
-
-#define PAD_CTRL_L2         0x0001
-#define PAD_CTRL_R2         0x0002
-#define PAD_CTRL_L1         0x0004
-#define PAD_CTRL_R1         0x0008
-#define PAD_CTRL_TRIANGLE   0x0010
-#define PAD_CTRL_CIRCLE     0x0020
-#define PAD_CTRL_CROSS      0x0040
-#define PAD_CTRL_SQUARE     0x0080
-
-int ioPadInit(int max) __attribute__((weak));
-int ioPadEnd(void) __attribute__((weak));
-int ioPadGetInfo(padInfo *info) __attribute__((weak));
-int ioPadGetData(int port, padData *data) __attribute__((weak));
+#if __has_include(<SDL2/SDL.h>)
+#include <SDL2/SDL.h>
+#define HAVE_SDL2 1
+#elif __has_include(<SDL.h>)
+#include <SDL.h>
+#define HAVE_SDL2 1
 #endif
 
 static PadState s_pad_state;
-static padInfo s_pad_info;
-static padData s_pad_data;
+#ifdef HAVE_SDL2
+static SDL_GameController* s_controller = NULL;
+#endif
 
 bool input_init(void) {
     memset(&s_pad_state, 0, sizeof(PadState));
-    if (ioPadInit) {
-        ioPadInit(7);
+#ifdef HAVE_SDL2
+    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) == 0) {
+        if (SDL_NumJoysticks() > 0) {
+            s_controller = SDL_GameControllerOpen(0);
+            if (s_controller) {
+                printf("[Input] Connected Game Controller: %s\n", SDL_GameControllerName(s_controller));
+            }
+        }
     }
+#endif
+    printf("[Input] Input subsystem initialized successfully.\n");
     return true;
 }
 
 void input_poll(void) {
-    if (!ioPadGetInfo || !ioPadGetData) return;
+    memset(&s_pad_state, 0, sizeof(PadState));
 
-    ioPadGetInfo(&s_pad_info);
-
-    if (s_pad_info.status[0]) {
-        ioPadGetData(0, &s_pad_data);
-
-        s_pad_state.cross    = (s_pad_data.button[3] & PAD_CTRL_CROSS) != 0;
-        s_pad_state.circle   = (s_pad_data.button[3] & PAD_CTRL_CIRCLE) != 0;
-        s_pad_state.triangle = (s_pad_data.button[3] & PAD_CTRL_TRIANGLE) != 0;
-        s_pad_state.square   = (s_pad_data.button[3] & PAD_CTRL_SQUARE) != 0;
-
-        s_pad_state.up       = (s_pad_data.button[2] & PAD_CTRL_UP) != 0;
-        s_pad_state.down     = (s_pad_data.button[2] & PAD_CTRL_DOWN) != 0;
-        s_pad_state.left     = (s_pad_data.button[2] & PAD_CTRL_LEFT) != 0;
-        s_pad_state.right    = (s_pad_data.button[2] & PAD_CTRL_RIGHT) != 0;
-
-        s_pad_state.l1       = (s_pad_data.button[3] & PAD_CTRL_L1) != 0;
-        s_pad_state.r1       = (s_pad_data.button[3] & PAD_CTRL_R1) != 0;
-        s_pad_state.l2       = (s_pad_data.button[3] & PAD_CTRL_L2) != 0;
-        s_pad_state.r2       = (s_pad_data.button[3] & PAD_CTRL_R2) != 0;
-
-        s_pad_state.start    = (s_pad_data.button[2] & PAD_CTRL_START) != 0;
-        s_pad_state.select   = (s_pad_data.button[2] & PAD_CTRL_SELECT) != 0;
-
-        // Stick values from PSL1GHT padData
-        s_pad_state.analog_lx = s_pad_data.ANA_L_H;
-        s_pad_state.analog_ly = s_pad_data.ANA_L_V;
-        s_pad_state.analog_rx = s_pad_data.ANA_R_H;
-        s_pad_state.analog_ry = s_pad_data.ANA_R_V;
-
-        if (s_pad_state.analog_lx > -0.15f && s_pad_state.analog_lx < 0.15f) s_pad_state.analog_lx = 0.0f;
-        if (s_pad_state.analog_ly > -0.15f && s_pad_state.analog_ly < 0.15f) s_pad_state.analog_ly = 0.0f;
+#ifdef HAVE_SDL2
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_CONTROLLERDEVICEADDED && !s_controller) {
+            s_controller = SDL_GameControllerOpen(event.cdevice.which);
+        } else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
+            if (s_controller) {
+                SDL_GameControllerClose(s_controller);
+                s_controller = NULL;
+            }
+        }
     }
+
+    // 1. Keyboard fallback (works out of the box on PC/RPCS3)
+    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    if (keys) {
+        s_pad_state.cross    = keys[SDL_SCANCODE_SPACE] || keys[SDL_SCANCODE_RETURN] || keys[SDL_SCANCODE_Z];
+        s_pad_state.circle   = keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_X] || keys[SDL_SCANCODE_BACKSPACE];
+        s_pad_state.triangle = keys[SDL_SCANCODE_C];
+        s_pad_state.square   = keys[SDL_SCANCODE_V];
+        s_pad_state.up       = keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W];
+        s_pad_state.down     = keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S];
+        s_pad_state.left     = keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A];
+        s_pad_state.right    = keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D];
+        s_pad_state.l1       = keys[SDL_SCANCODE_Q];
+        s_pad_state.r1       = keys[SDL_SCANCODE_E];
+
+        float k_lx = 0.0f, k_ly = 0.0f;
+        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])  k_lx -= 1.0f;
+        if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) k_lx += 1.0f;
+        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    k_ly -= 1.0f;
+        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])  k_ly += 1.0f;
+        s_pad_state.analog_lx = k_lx;
+        s_pad_state.analog_ly = k_ly;
+    }
+
+    // 2. DualShock 3 / Game Controller polling
+    if (s_controller) {
+        s_pad_state.cross    |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_A);
+        s_pad_state.circle   |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_B);
+        s_pad_state.square   |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_X);
+        s_pad_state.triangle |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_Y);
+        s_pad_state.up       |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        s_pad_state.down     |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        s_pad_state.left     |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        s_pad_state.right    |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        s_pad_state.l1       |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        s_pad_state.r1       |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+        s_pad_state.start    |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_START);
+        s_pad_state.select   |= SDL_GameControllerGetButton(s_controller, SDL_CONTROLLER_BUTTON_BACK);
+
+        Sint16 ax = SDL_GameControllerGetAxis(s_controller, SDL_CONTROLLER_AXIS_LEFTX);
+        Sint16 ay = SDL_GameControllerGetAxis(s_controller, SDL_CONTROLLER_AXIS_LEFTY);
+        if (abs(ax) > 3200) s_pad_state.analog_lx = ax / 32767.0f;
+        if (abs(ay) > 3200) s_pad_state.analog_ly = ay / 32767.0f;
+
+        Sint16 rx = SDL_GameControllerGetAxis(s_controller, SDL_CONTROLLER_AXIS_RIGHTX);
+        Sint16 ry = SDL_GameControllerGetAxis(s_controller, SDL_CONTROLLER_AXIS_RIGHTY);
+        if (abs(rx) > 3200) s_pad_state.analog_rx = rx / 32767.0f;
+        if (abs(ry) > 3200) s_pad_state.analog_ry = ry / 32767.0f;
+    }
+#endif
 }
 
 const PadState* input_get_state(void) {
@@ -101,7 +106,11 @@ const PadState* input_get_state(void) {
 }
 
 void input_cleanup(void) {
-    if (ioPadEnd) {
-        ioPadEnd();
+#ifdef HAVE_SDL2
+    if (s_controller) {
+        SDL_GameControllerClose(s_controller);
+        s_controller = NULL;
     }
+#endif
+    printf("[Input] Input subsystem cleaned up.\n");
 }
