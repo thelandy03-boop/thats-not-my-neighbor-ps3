@@ -5,14 +5,14 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch: # Permite compilar manualmente con un clic en GitHub
+  workflow_dispatch:
 
 jobs:
   build-ps3:
     name: Compile Homebrew PKG
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ps3dev/ps3dev:master
+      image: hldtux/ps3dev-sdl2:latest
 
     steps:
       - name: Checkout Repository
