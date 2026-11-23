@@ -41,11 +41,10 @@ $(TARGET).pkg: $(TARGET).self
 	@mkdir -p pkg/USRDIR
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
 	@cp -r assets pkg/USRDIR/
-	@$(MAKE_SFO) --title "$(APP_NAME)" --appid "$(TITLE_ID)" --version "$(APP_VER)" ps3/PARAM.SFO
-	@cp ps3/PARAM.SFO pkg/PARAM.SFO
+	@if [ -f ps3/PARAM.SFO ]; then cp ps3/PARAM.SFO pkg/PARAM.SFO; elif which make_sfo >/dev/null 2>&1; then make_sfo --title "$(APP_NAME)" --appid "$(TITLE_ID)" --version "$(APP_VER)" pkg/PARAM.SFO; elif which sfo.py >/dev/null 2>&1; then sfo.py -t "$(APP_NAME)" -a "$(TITLE_ID)" -v "$(APP_VER)" pkg/PARAM.SFO; fi
 	@if [ -f ps3/ICON0.PNG ]; then cp ps3/ICON0.PNG pkg/ICON0.PNG; fi
 	@if [ -f ps3/PIC1.PNG ]; then cp ps3/PIC1.PNG pkg/PIC1.PNG; fi
-	@$(PKG_PY) --contentid UP0001-$(TITLE_ID)_00-0000000000000000 pkg/ $(TARGET).pkg
+	@if which pkg.py >/dev/null 2>&1; then pkg.py --contentid UP0001-$(TITLE_ID)_00-0000000000000000 pkg/ $(TARGET).pkg; elif which package_finalize >/dev/null 2>&1; then package_finalize pkg/ $(TARGET).pkg; fi
 	@echo "Built $(TARGET).pkg successfully!"
 
 clean:
