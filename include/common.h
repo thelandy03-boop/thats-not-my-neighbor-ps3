@@ -7,8 +7,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SCREEN_WIDTH  1280
-#define SCREEN_HEIGHT 720
+// Full HD 1080p native resolution (matching original Godot viewport)
+#define SCREEN_WIDTH  1920
+#define SCREEN_HEIGHT 1080
 
 typedef struct {
     float x;
