@@ -15,9 +15,9 @@ APP_VER		:= 01.00
 PS3DEV		?= /usr/local/ps3dev
 PORTLIBS	?= $(PS3DEV)/portlibs/ppu
 
-INCLUDES	:= -Iinclude -I$(PS3DEV)/include -I$(PORTLIBS)/include
-LIBDIRS		:= -L$(PS3DEV)/lib -L$(PORTLIBS)/lib
-LIBS		:= -lreality -lsysutil -lio -laudio -lpad -lm -lc
+INCLUDES	:= -Iinclude -I$(PS3DEV)/include -I$(PORTLIBS)/include -I$(PS3DEV)/ppu/include
+LIBDIRS		:= -L$(PS3DEV)/lib -L$(PORTLIBS)/lib -L$(PS3DEV)/ppu/lib
+LIBS		:= -lsysutil -lio -laudio -lm -lc
 
 CFLAGS		:= -O2 -Wall -mcpu=cell $(INCLUDES)
 SRC_FILES	:= $(wildcard src/*.c)

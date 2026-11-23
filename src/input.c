@@ -85,11 +85,11 @@ void input_poll(void) {
         s_pad_state.start    = (s_pad_data.button[2] & PAD_CTRL_START) != 0;
         s_pad_state.select   = (s_pad_data.button[2] & PAD_CTRL_SELECT) != 0;
 
-        // Stick values
-        s_pad_state.analog_lx = ((float)s_pad_data.button[6] - 128.0f) / 128.0f;
-        s_pad_state.analog_ly = ((float)s_pad_data.button[7] - 128.0f) / 128.0f;
-        s_pad_state.analog_rx = ((float)s_pad_data.button[4] - 128.0f) / 128.0f;
-        s_pad_state.analog_ry = ((float)s_pad_data.button[5] - 128.0f) / 128.0f;
+        // Stick values from PSL1GHT padData
+        s_pad_state.analog_lx = s_pad_data.ANA_L_H;
+        s_pad_state.analog_ly = s_pad_data.ANA_L_V;
+        s_pad_state.analog_rx = s_pad_data.ANA_R_H;
+        s_pad_state.analog_ry = s_pad_data.ANA_R_V;
 
         if (s_pad_state.analog_lx > -0.15f && s_pad_state.analog_lx < 0.15f) s_pad_state.analog_lx = 0.0f;
         if (s_pad_state.analog_ly > -0.15f && s_pad_state.analog_ly < 0.15f) s_pad_state.analog_ly = 0.0f;
