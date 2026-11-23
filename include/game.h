@@ -5,7 +5,6 @@
 #include "graphics.h"
 #include "neighbors_data.h"
 
-// Camera / Parallax bounds from original game (Office.gd)
 #define CAMERA_CENTER_X     960.0f
 #define CAMERA_CENTER_Y     540.0f
 #define CAMERA_MIN_X        780.0f
@@ -17,9 +16,11 @@ typedef enum {
     STATE_TITLE,
     STATE_OFFICE_BOOTH,
     STATE_DOCUMENT_INSPECT,
+    STATE_PHONE_CALL,
+    STATE_DOPPEL_ATTACK,
     STATE_EMERGENCY_ALARM,
-    STATE_PAUSE,
-    STATE_GAME_OVER
+    STATE_GAME_OVER,
+    STATE_VICTORY_SUMMARY
 } GameState;
 
 typedef enum {
@@ -48,7 +49,6 @@ typedef struct {
     const char* label;
 } DeskButton;
 
-// 5 core D.D.D. verification checks
 typedef struct {
     bool photo_match;
     bool id_number_match;
@@ -70,62 +70,86 @@ typedef struct {
 } CurrentVisitorDocs;
 
 typedef struct {
+    char dialed_digits[8];
+    int digit_count;
+    bool in_call;
+    float call_timer;
+    char status_message[128];
+    DeskButton dial_buttons[10];
+    DeskButton btn_hangup;
+} PhoneContext;
+
+typedef struct {
     GameState state;
     bool running;
     Camera camera;
     Vector2D cursor;
     bool cursor_clicking;
 
-    // Active document tab & verification
+    // Document inspection
     DocTab active_doc_tab;
     VerificationChecklist checklist;
     CurrentVisitorDocs visitor_docs;
 
+    // Rotary Phone Context
+    PhoneContext phone;
+
     // Security Booth State
     HatchState hatch_state;
-    float hatch_progress; // 0.0 (closed) to 1.0 (open)
+    float hatch_progress;
     bool emergency_cover_open;
     bool alarm_active;
 
-    // Current visitor data
+    // Visitor
     int visitor_index;
     bool visitor_is_doppelganger;
     bool visitor_present;
 
-    // Interactive buttons
+    // Attack sequence
+    float attack_anim_timer;
+
+    // Desk interactive buttons
     DeskButton btn_door_unlock;
     DeskButton btn_door_lock;
     DeskButton btn_emergency;
     DeskButton btn_emergency_cover;
     DeskButton btn_folder_list;
     DeskButton btn_folder_id;
+    DeskButton btn_phone_desk;
 
+    // Document tabs
     DeskButton tab_btn_id;
     DeskButton tab_btn_entry;
     DeskButton tab_btn_list;
     DeskButton tab_btn_check;
 
-    // Loaded Textures (PNG via stb_image)
+    // Game Over buttons
+    DeskButton btn_restart;
+    DeskButton btn_quit;
+
+    // Textures
     Texture* tex_background;
     Texture* tex_wall;
     Texture* tex_panic_window;
     Texture* tex_cursor;
     Texture* tex_door_control;
-    Texture* tex_door_btn_lock;
-    Texture* tex_door_btn_unlock;
     Texture* tex_id_card;
     Texture* tex_paper;
     Texture* tex_todays_list;
     Texture* tex_ddd_logo;
-    Texture* tex_check_frame;
+    Texture* tex_phone_base;
+    Texture* tex_phone_roulette;
+    Texture* tex_doppel_hand_l;
+    Texture* tex_doppel_hand_r;
     Texture* tex_roman_photo;
     Texture* tex_francis_photo;
 
-    // Stats
+    // Game Statistics / Rank
     int current_day;
     int processed_count;
     int correct_clears;
     int caught_doppelgangers;
+    int doppelgangers_let_in;
 } GameContext;
 
 void game_init(GameContext* ctx);
@@ -134,6 +158,7 @@ void game_free_textures(GameContext* ctx);
 void game_update(GameContext* ctx);
 void game_render(GameContext* ctx);
 void game_spawn_next_visitor(GameContext* ctx);
+void game_trigger_doppel_attack(GameContext* ctx);
 void game_cleanup(GameContext* ctx);
 
 #endif // GAME_H

@@ -21,13 +21,17 @@ void audio_play_sfx(SoundEffect sfx) {
         "SFX_Window_Break.wav",
         "SFX_Phone_Ring.ogg",
         "SFX_Pick_Up_Phone.wav",
+        "SFX_Hang_Down_Phone.wav",
+        "SFX_Dial_1.wav",
+        "SFX_Dial_Tone.ogg",
         "SFX_Pick_Up_Folder.wav",
         "SFX_Put_Back_Folder.wav",
         "SFX_Write.wav",
         "SFX_Accept.wav",
-        "SFX_Siren.ogg"
+        "SFX_Siren.ogg",
+        "SFX_Bite.wav"
     };
-    if (sfx >= 0 && sfx <= SFX_SIREN_ALARM) {
+    if (sfx >= 0 && sfx <= SFX_BITE_ATTACK) {
         printf("[Audio] Triggering SFX: %s\n", sfx_names[sfx]);
     }
 }
