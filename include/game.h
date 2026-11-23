@@ -2,6 +2,7 @@
 #define GAME_H
 
 #include "common.h"
+#include "graphics.h"
 #include "neighbors_data.h"
 
 // Camera / Parallax bounds from original game (Office.gd)
@@ -58,7 +59,6 @@ typedef struct {
 } VerificationChecklist;
 
 typedef struct {
-    // Current visitor document data (might have subtle doppelganger flaws)
     char displayed_name[64];
     char displayed_last_name[64];
     char displayed_id_number[32];
@@ -66,7 +66,7 @@ typedef struct {
     char displayed_apartment[16];
     bool is_on_today_list;
     bool has_doppelganger_flaw;
-    int flaw_type; // 0: None, 1: Wrong date, 2: Wrong apt, 3: Fake ID, 4: Not on list
+    int flaw_type;
 } CurrentVisitorDocs;
 
 typedef struct {
@@ -76,7 +76,7 @@ typedef struct {
     Vector2D cursor;
     bool cursor_clicking;
 
-    // Active document tab
+    // Active document tab & verification
     DocTab active_doc_tab;
     VerificationChecklist checklist;
     CurrentVisitorDocs visitor_docs;
@@ -100,11 +100,26 @@ typedef struct {
     DeskButton btn_folder_list;
     DeskButton btn_folder_id;
 
-    // Document Tab buttons
     DeskButton tab_btn_id;
     DeskButton tab_btn_entry;
     DeskButton tab_btn_list;
     DeskButton tab_btn_check;
+
+    // Loaded Textures (PNG via stb_image)
+    Texture* tex_background;
+    Texture* tex_wall;
+    Texture* tex_panic_window;
+    Texture* tex_cursor;
+    Texture* tex_door_control;
+    Texture* tex_door_btn_lock;
+    Texture* tex_door_btn_unlock;
+    Texture* tex_id_card;
+    Texture* tex_paper;
+    Texture* tex_todays_list;
+    Texture* tex_ddd_logo;
+    Texture* tex_check_frame;
+    Texture* tex_roman_photo;
+    Texture* tex_francis_photo;
 
     // Stats
     int current_day;
@@ -114,6 +129,8 @@ typedef struct {
 } GameContext;
 
 void game_init(GameContext* ctx);
+void game_load_textures(GameContext* ctx);
+void game_free_textures(GameContext* ctx);
 void game_update(GameContext* ctx);
 void game_render(GameContext* ctx);
 void game_spawn_next_visitor(GameContext* ctx);

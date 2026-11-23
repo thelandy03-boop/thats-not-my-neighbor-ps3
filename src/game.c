@@ -9,10 +9,48 @@ static bool point_in_rect(float px, float py, Rect2D r) {
     return (px >= r.x && px <= (r.x + r.w) && py >= r.y && py <= (r.y + r.h));
 }
 
+void game_load_textures(GameContext* ctx) {
+    printf("[Game] Loading PNG textures via stb_image...\n");
+    ctx->tex_background      = texture_load_from_file("assets/gfx/Background.png");
+    ctx->tex_wall            = texture_load_from_file("assets/gfx/Wall.png");
+    ctx->tex_panic_window    = texture_load_from_file("assets/gfx/Panic_window.png");
+    ctx->tex_cursor          = texture_load_from_file("assets/gfx/Cursor.png");
+    ctx->tex_door_control    = texture_load_from_file("assets/gfx/Door_control.png");
+    ctx->tex_door_btn_lock   = texture_load_from_file("assets/gfx/Door_button_lock.png");
+    ctx->tex_door_btn_unlock = texture_load_from_file("assets/gfx/Door_button_unlock.png");
+    ctx->tex_id_card         = texture_load_from_file("assets/gfx/ID.png");
+    ctx->tex_paper           = texture_load_from_file("assets/gfx/Paper.png");
+    ctx->tex_todays_list     = texture_load_from_file("assets/gfx/Todays_list.png");
+    ctx->tex_ddd_logo        = texture_load_from_file("assets/gfx/DDD_logo.png");
+    ctx->tex_check_frame     = texture_load_from_file("assets/gfx/Check_frame.png");
+    ctx->tex_roman_photo     = texture_load_from_file("assets/gfx/neighbors/Char_Roman_Long_Photo.png");
+    ctx->tex_francis_photo   = texture_load_from_file("assets/gfx/neighbors/Char_Francis_Long_Photo.png");
+}
+
+void game_free_textures(GameContext* ctx) {
+    texture_free(ctx->tex_background);
+    texture_free(ctx->tex_wall);
+    texture_free(ctx->tex_panic_window);
+    texture_free(ctx->tex_cursor);
+    texture_free(ctx->tex_door_control);
+    texture_free(ctx->tex_door_btn_lock);
+    texture_free(ctx->tex_door_btn_unlock);
+    texture_free(ctx->tex_id_card);
+    texture_free(ctx->tex_paper);
+    texture_free(ctx->tex_todays_list);
+    texture_free(ctx->tex_ddd_logo);
+    texture_free(ctx->tex_check_frame);
+    texture_free(ctx->tex_roman_photo);
+    texture_free(ctx->tex_francis_photo);
+}
+
 void game_init(GameContext* ctx) {
     memset(ctx, 0, sizeof(GameContext));
     ctx->state = STATE_OFFICE_BOOTH;
     ctx->running = true;
+
+    // Load original PNG textures
+    game_load_textures(ctx);
 
     // Camera setup (Center at 960, 540)
     ctx->camera.position.x = CAMERA_CENTER_X;
@@ -24,7 +62,6 @@ void game_init(GameContext* ctx) {
     ctx->cursor.x = SCREEN_WIDTH / 2.0f;
     ctx->cursor.y = SCREEN_HEIGHT / 2.0f;
 
-    // Security Booth initial state
     ctx->hatch_state = HATCH_CLOSED;
     ctx->hatch_progress = 0.0f;
     ctx->emergency_cover_open = false;
@@ -41,7 +78,6 @@ void game_init(GameContext* ctx) {
     ctx->btn_folder_list = (DeskButton){ (Rect2D){ 550, 840, 220, 140 }, false, false, "LISTA DEL DIA" };
     ctx->btn_folder_id   = (DeskButton){ (Rect2D){ 820, 840, 220, 140 }, false, false, "DOCUMENTOS ID" };
 
-    // Document Tab navigation buttons
     ctx->tab_btn_id    = (DeskButton){ (Rect2D){ 280, 60, 220, 50 }, false, false, "[L1] IDENTIFICACION" };
     ctx->tab_btn_entry = (DeskButton){ (Rect2D){ 520, 60, 220, 50 }, false, false, "SOLICITUD INGRESO" };
     ctx->tab_btn_list  = (DeskButton){ (Rect2D){ 760, 60, 220, 50 }, false, false, "LISTA DEL DIA" };
@@ -49,17 +85,14 @@ void game_init(GameContext* ctx) {
 
     ctx->active_doc_tab = DOC_TAB_ID;
 
-    // Spawn first visitor
     game_spawn_next_visitor(ctx);
 }
 
 void game_spawn_next_visitor(GameContext* ctx) {
     ctx->visitor_index = (ctx->processed_count % 20);
-    // 25% chance of being a doppelganger
     ctx->visitor_is_doppelganger = ((ctx->processed_count % 4) == 3);
     ctx->visitor_present = true;
 
-    // Reset verification checklist for new visitor
     memset(&ctx->checklist, 0, sizeof(VerificationChecklist));
 
     const NeighborData* base = &g_neighbors[ctx->visitor_index];
@@ -71,21 +104,20 @@ void game_spawn_next_visitor(GameContext* ctx) {
     ctx->visitor_docs.is_on_today_list = true;
     ctx->visitor_docs.has_doppelganger_flaw = ctx->visitor_is_doppelganger;
 
-    // If it's a Doppelganger, plant an authentic flaw
     if (ctx->visitor_is_doppelganger) {
         ctx->visitor_docs.flaw_type = (ctx->processed_count % 4) + 1;
         switch (ctx->visitor_docs.flaw_type) {
-            case 1: // Expired ID flaw
+            case 1:
                 strncpy(ctx->visitor_docs.displayed_expiration, "05/1952", sizeof(ctx->visitor_docs.displayed_expiration));
                 break;
-            case 2: // Wrong Apartment
+            case 2:
                 strncpy(ctx->visitor_docs.displayed_apartment, "P04-09", sizeof(ctx->visitor_docs.displayed_apartment));
                 break;
-            case 3: // Corrupted ID Number
+            case 3:
                 ctx->visitor_docs.displayed_id_number[3] = '9';
                 ctx->visitor_docs.displayed_id_number[4] = '9';
                 break;
-            case 4: // Not on today's list
+            case 4:
                 ctx->visitor_docs.is_on_today_list = false;
                 break;
         }
@@ -107,7 +139,6 @@ void game_update(GameContext* ctx) {
         return;
     }
 
-    // Cursor movement
     const float cursor_speed = 10.0f;
     ctx->cursor.x += pad->analog_lx * cursor_speed;
     ctx->cursor.y += pad->analog_ly * cursor_speed;
@@ -117,7 +148,6 @@ void game_update(GameContext* ctx) {
     if (ctx->cursor.y < 10) ctx->cursor.y = 10;
     if (ctx->cursor.y > SCREEN_HEIGHT - 10) ctx->cursor.y = SCREEN_HEIGHT - 10;
 
-    // Camera parallax (in booth state)
     if (ctx->state == STATE_OFFICE_BOOTH) {
         float target_cam_x = CAMERA_CENTER_X + (ctx->cursor.x - (SCREEN_WIDTH / 2.0f)) * 0.15f;
         float target_cam_y = CAMERA_CENTER_Y + (ctx->cursor.y - (SCREEN_HEIGHT / 2.0f)) * 0.08f;
@@ -131,7 +161,6 @@ void game_update(GameContext* ctx) {
         ctx->camera.position.y += (target_cam_y - ctx->camera.position.y) * 0.1f;
     }
 
-    // Shutter animation
     const float hatch_anim_speed = 0.04f;
     if (ctx->hatch_state == HATCH_OPENING) {
         ctx->hatch_progress += hatch_anim_speed;
@@ -147,7 +176,6 @@ void game_update(GameContext* ctx) {
         }
     }
 
-    // Button hit-testing
     ctx->btn_door_unlock.hovered     = point_in_rect(ctx->cursor.x, ctx->cursor.y, ctx->btn_door_unlock.rect);
     ctx->btn_door_lock.hovered       = point_in_rect(ctx->cursor.x, ctx->cursor.y, ctx->btn_door_lock.rect);
     ctx->btn_emergency_cover.hovered = point_in_rect(ctx->cursor.x, ctx->cursor.y, ctx->btn_emergency_cover.rect);
@@ -160,7 +188,6 @@ void game_update(GameContext* ctx) {
     ctx->tab_btn_list.hovered  = point_in_rect(ctx->cursor.x, ctx->cursor.y, ctx->tab_btn_list.rect);
     ctx->tab_btn_check.hovered = point_in_rect(ctx->cursor.x, ctx->cursor.y, ctx->tab_btn_check.rect);
 
-    // Cross (✖) Click interaction
     if (pad->cross && !ctx->cursor_clicking) {
         ctx->cursor_clicking = true;
 
@@ -188,13 +215,11 @@ void game_update(GameContext* ctx) {
                 audio_play_sfx(SFX_FOLDER_PICKUP);
             }
         } else if (ctx->state == STATE_DOCUMENT_INSPECT) {
-            // Tab clicks
             if (ctx->tab_btn_id.hovered) { ctx->active_doc_tab = DOC_TAB_ID; audio_play_sfx(SFX_ACCEPT_BUTTON); }
             else if (ctx->tab_btn_entry.hovered) { ctx->active_doc_tab = DOC_TAB_ENTRY_REQUEST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
             else if (ctx->tab_btn_list.hovered) { ctx->active_doc_tab = DOC_TAB_TODAYS_LIST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
             else if (ctx->tab_btn_check.hovered) { ctx->active_doc_tab = DOC_TAB_CHECKLIST; audio_play_sfx(SFX_ACCEPT_BUTTON); }
 
-            // Checklist checkboxes toggles (Checklist Tab)
             if (ctx->active_doc_tab == DOC_TAB_CHECKLIST) {
                 Rect2D r1 = { 400, 240, 40, 40 };
                 Rect2D r2 = { 400, 310, 40, 40 };
@@ -215,8 +240,6 @@ void game_update(GameContext* ctx) {
         ctx->cursor_clicking = false;
     }
 
-    // Shortcuts:
-    // L1/R1 in document view switches tabs, in booth opens/closes hatch
     if (ctx->state == STATE_DOCUMENT_INSPECT) {
         if (pad->l1) {
             if (ctx->active_doc_tab > 0) { ctx->active_doc_tab--; audio_play_sfx(SFX_ACCEPT_BUTTON); }
@@ -248,100 +271,115 @@ void game_update(GameContext* ctx) {
 }
 
 void game_render(GameContext* ctx) {
-    graphics_clear(0x181410FF);
+    graphics_clear(0xFF181410);
 
     switch (ctx->state) {
         case STATE_OFFICE_BOOTH: {
             int cam_dx = (int)(ctx->camera.position.x - CAMERA_CENTER_X);
             int cam_dy = (int)(ctx->camera.position.y - CAMERA_CENTER_Y);
 
-            // Wall Background
-            graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x2d2822FF);
+            // 1. Render Background & Wall Textures (with parallax shift)
+            if (ctx->tex_background) {
+                graphics_draw_texture(ctx->tex_background, -cam_dx, -cam_dy);
+            } else {
+                graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF2d2822);
+            }
 
-            // Window Frame
+            if (ctx->tex_wall) {
+                graphics_draw_texture(ctx->tex_wall, -cam_dx, -cam_dy);
+            }
+
+            // 2. Window Frame Coordinates
             int win_x = 480 - cam_dx;
             int win_y = 120 - cam_dy;
             int win_w = 960;
             int win_h = 560;
-            graphics_draw_rect(win_x - 10, win_y - 10, win_w + 20, win_h + 20, 0x111111FF);
-            graphics_draw_rect(win_x, win_y, win_w, win_h, 0x080808FF);
 
-            // Visitor
+            // 3. Visitor inside Window (when hatch is open)
             if (ctx->hatch_progress > 0.05f && ctx->visitor_present) {
-                const NeighborData* visitor = &g_neighbors[ctx->visitor_index];
                 int vis_x = win_x + (win_w / 2) - 150;
                 int vis_y = win_y + 80;
-                graphics_draw_rect(vis_x, vis_y, 300, 420, 0x5a4a3aFF);
-                graphics_draw_rect(vis_x + 80, vis_y + 40, 140, 160, 0xd4b290FF);
 
+                // Draw authentic character photo / portrait texture if loaded
+                Texture* char_tex = (ctx->visitor_index == 0) ? ctx->tex_roman_photo : ctx->tex_francis_photo;
+                if (char_tex) {
+                    graphics_draw_texture_scaled(char_tex, vis_x, vis_y, 300, 420);
+                } else {
+                    graphics_draw_rect(vis_x, vis_y, 300, 420, 0xFF5a4a3a);
+                    graphics_draw_rect(vis_x + 80, vis_y + 40, 140, 160, 0xFFd4b290);
+                }
+
+                const NeighborData* visitor = &g_neighbors[ctx->visitor_index];
                 char tag[128];
                 snprintf(tag, sizeof(tag), "%s %s", visitor->name, visitor->last_name);
-                graphics_draw_text(vis_x + 20, vis_y + 430, tag, 0xE0E0E0FF);
+                graphics_draw_text(vis_x + 20, vis_y + 430, tag, 0xFFE0E0E0);
             }
 
-            // Security Shutter
+            // 4. Security Shutter (Sliding Hatch)
             int shutter_h = (int)((1.0f - ctx->hatch_progress) * win_h);
             if (shutter_h > 0) {
-                graphics_draw_rect(win_x, win_y, win_w, shutter_h, 0x44494eff);
-                for (int sy = win_y + 20; sy < win_y + shutter_h; sy += 30) {
-                    graphics_draw_rect(win_x, sy, win_w, 2, 0x222528ff);
+                if (ctx->tex_panic_window) {
+                    graphics_draw_texture_clipped(ctx->tex_panic_window, win_x, win_y, 0, shutter_h);
+                } else {
+                    graphics_draw_rect(win_x, win_y, win_w, shutter_h, 0xFF44494e);
+                    for (int sy = win_y + 20; sy < win_y + shutter_h; sy += 30) {
+                        graphics_draw_rect(win_x, sy, win_w, 2, 0xFF222528);
+                    }
                 }
             }
 
-            // Desk Surface
-            int desk_y = 660 - (int)(cam_dy * 1.2f);
-            graphics_draw_rect(0, desk_y, SCREEN_WIDTH, SCREEN_HEIGHT - desk_y, 0x221a14FF);
-            graphics_draw_rect(0, desk_y, SCREEN_WIDTH, 6, 0x3a2c22FF);
+            // 5. Door Control Panel Texture
+            if (ctx->tex_door_control) {
+                graphics_draw_texture(ctx->tex_door_control, 1260, 680);
+            } else {
+                graphics_draw_rect(ctx->btn_door_unlock.rect.x, ctx->btn_door_unlock.rect.y,
+                                   ctx->btn_door_unlock.rect.w, ctx->btn_door_unlock.rect.h,
+                                   ctx->btn_door_unlock.hovered ? 0xFF2e7d32 : 0xFF1b5e20);
+                graphics_draw_rect(ctx->btn_door_lock.rect.x, ctx->btn_door_lock.rect.y,
+                                   ctx->btn_door_lock.rect.w, ctx->btn_door_lock.rect.h,
+                                   ctx->btn_door_lock.hovered ? 0xFFc62828 : 0xFF8e0000);
+            }
 
-            // Door Buttons
-            graphics_draw_rect(ctx->btn_door_unlock.rect.x, ctx->btn_door_unlock.rect.y,
-                               ctx->btn_door_unlock.rect.w, ctx->btn_door_unlock.rect.h,
-                               ctx->btn_door_unlock.hovered ? 0x2e7d32FF : 0x1b5e20FF);
-            graphics_draw_text(ctx->btn_door_unlock.rect.x + 12, ctx->btn_door_unlock.rect.y + 30, "ABRIR", 0xFFFFFFFF);
+            // 6. Folders / Papers on Desk
+            if (ctx->tex_paper) {
+                graphics_draw_texture_scaled(ctx->tex_paper, ctx->btn_folder_list.rect.x, ctx->btn_folder_list.rect.y, 220, 140);
+                graphics_draw_texture_scaled(ctx->tex_paper, ctx->btn_folder_id.rect.x, ctx->btn_folder_id.rect.y, 220, 140);
+            } else {
+                graphics_draw_rect(ctx->btn_folder_list.rect.x, ctx->btn_folder_list.rect.y, 220, 140, 0xFF998055);
+                graphics_draw_rect(ctx->btn_folder_id.rect.x, ctx->btn_folder_id.rect.y, 220, 140, 0xFFaaaa99);
+            }
+            graphics_draw_text(ctx->btn_folder_list.rect.x + 20, ctx->btn_folder_list.rect.y + 55, "LISTA D.D.D.", 0xFF111111);
+            graphics_draw_text(ctx->btn_folder_id.rect.x + 35, ctx->btn_folder_id.rect.y + 55, "PAPELEO ID", 0xFF111111);
 
-            graphics_draw_rect(ctx->btn_door_lock.rect.x, ctx->btn_door_lock.rect.y,
-                               ctx->btn_door_lock.rect.w, ctx->btn_door_lock.rect.h,
-                               ctx->btn_door_lock.hovered ? 0xc62828FF : 0x8e0000FF);
-            graphics_draw_text(ctx->btn_door_lock.rect.x + 10, ctx->btn_door_lock.rect.y + 30, "CERRAR", 0xFFFFFFFF);
-
-            // Folders
-            graphics_draw_rect(ctx->btn_folder_list.rect.x, ctx->btn_folder_list.rect.y,
-                               ctx->btn_folder_list.rect.w, ctx->btn_folder_list.rect.h,
-                               ctx->btn_folder_list.hovered ? 0xccb077FF : 0x998055FF);
-            graphics_draw_text(ctx->btn_folder_list.rect.x + 20, ctx->btn_folder_list.rect.y + 55, "LISTA D.D.D.", 0x111111FF);
-
-            graphics_draw_rect(ctx->btn_folder_id.rect.x, ctx->btn_folder_id.rect.y,
-                               ctx->btn_folder_id.rect.w, ctx->btn_folder_id.rect.h,
-                               ctx->btn_folder_id.hovered ? 0xddddccFF : 0xaaaa99FF);
-            graphics_draw_text(ctx->btn_folder_id.rect.x + 35, ctx->btn_folder_id.rect.y + 55, "PAPELEO ID", 0x111111FF);
-
-            // Emergency Panic Button
+            // 7. Emergency Panic Button
             if (ctx->emergency_cover_open) {
                 graphics_draw_rect(ctx->btn_emergency.rect.x, ctx->btn_emergency.rect.y,
                                    ctx->btn_emergency.rect.w, ctx->btn_emergency.rect.h,
-                                   ctx->btn_emergency.hovered ? 0xff1744FF : 0xd50000FF);
+                                   ctx->btn_emergency.hovered ? 0xFFff1744 : 0xFFd50000);
                 graphics_draw_text(ctx->btn_emergency.rect.x + 10, ctx->btn_emergency.rect.y + 40, "D.D.D.", 0xFFFFFFFF);
             } else {
                 graphics_draw_rect(ctx->btn_emergency_cover.rect.x, ctx->btn_emergency_cover.rect.y,
-                                   ctx->btn_emergency_cover.rect.w, ctx->btn_emergency_cover.rect.h, 0xfbc02dFF);
-                graphics_draw_text(ctx->btn_emergency_cover.rect.x + 15, ctx->btn_emergency_cover.rect.y + 45, "PELIGRO", 0x111111FF);
+                                   ctx->btn_emergency_cover.rect.w, ctx->btn_emergency_cover.rect.h, 0xFFfbc02d);
+                graphics_draw_text(ctx->btn_emergency_cover.rect.x + 15, ctx->btn_emergency_cover.rect.y + 45, "PELIGRO", 0xFF111111);
             }
 
-            graphics_draw_text(50, 40, "CABINA D.D.D. #33 | PS3 HOMEBREW EDITION", 0xFFD700FF);
-            graphics_draw_text(50, 1020, "[L1/R1] Abrir/Cerrar  [X] Interactuar  [[]] Inspeccionar Documentos  [/\\\\] Alarma D.D.D.", 0xAAAAAAFF);
+            // D.D.D. Logo watermark
+            if (ctx->tex_ddd_logo) {
+                graphics_draw_texture_scaled(ctx->tex_ddd_logo, 60, 40, 120, 120);
+            }
+
+            graphics_draw_text(200, 50, "CABINA D.D.D. #33 | PS3 HOMEBREW EDITION", 0xFFFFD700);
+            graphics_draw_text(50, 1020, "[L1/R1] Abrir/Cerrar  [X] Interactuar  [[]] Documentos  [/\\\\] Alarma D.D.D.", 0xFFAAAAAA);
             break;
         }
 
         case STATE_DOCUMENT_INSPECT: {
             const NeighborData* visitor = &g_neighbors[ctx->visitor_index];
+            graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xEE12100d);
 
-            // Background dimming
-            graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x12100dEE);
-
-            // Top Navigation Tabs
             DeskButton* tabs[4] = { &ctx->tab_btn_id, &ctx->tab_btn_entry, &ctx->tab_btn_list, &ctx->tab_btn_check };
             for (int t = 0; t < 4; t++) {
-                uint32_t bg = (ctx->active_doc_tab == (DocTab)t) ? 0x8b1e1eFF : (tabs[t]->hovered ? 0x554433FF : 0x332820FF);
+                uint32_t bg = (ctx->active_doc_tab == (DocTab)t) ? 0xFF8b1e1e : (tabs[t]->hovered ? 0xFF554433 : 0xFF332820);
                 graphics_draw_rect(tabs[t]->rect.x, tabs[t]->rect.y, tabs[t]->rect.w, tabs[t]->rect.h, bg);
                 graphics_draw_text(tabs[t]->rect.x + 15, tabs[t]->rect.y + 15, tabs[t]->label, 0xFFFFFFFF);
             }
@@ -352,69 +390,63 @@ void game_render(GameContext* ctx) {
             int main_h = 760;
 
             if (ctx->active_doc_tab == DOC_TAB_ID) {
-                // Official ID Card Document
-                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xf5f0e1FF); // Paper background
-                graphics_draw_rect(main_x, main_y, main_w, 60, 0x8b1e1eFF);
-                graphics_draw_text(main_x + 30, main_y + 18, "D.D.D. IDENTIFICACION OFICIAL DE RESIDENTE", 0xFFFFFFFF);
+                if (ctx->tex_id_card) {
+                    graphics_draw_texture_scaled(ctx->tex_id_card, main_x, main_y, main_w, main_h);
+                } else {
+                    graphics_draw_rect(main_x, main_y, main_w, main_h, 0xFFf5f0e1);
+                    graphics_draw_rect(main_x, main_y, main_w, 60, 0xFF8b1e1e);
+                }
 
-                // Photo frame
-                graphics_draw_rect(main_x + 60, main_y + 120, 260, 320, 0x222222FF);
-                graphics_draw_rect(main_x + 70, main_y + 130, 240, 300, 0xd4b290FF);
-                graphics_draw_text(main_x + 120, main_y + 260, "[FOTO]", 0x555555FF);
+                // Photo
+                Texture* photo = (ctx->visitor_index == 0) ? ctx->tex_roman_photo : ctx->tex_francis_photo;
+                if (photo) {
+                    graphics_draw_texture_scaled(photo, main_x + 60, main_y + 120, 260, 320);
+                } else {
+                    graphics_draw_rect(main_x + 60, main_y + 120, 260, 320, 0xFFd4b290);
+                }
 
-                // Information fields
                 char buf[256];
                 snprintf(buf, sizeof(buf), "NOMBRE: %s", ctx->visitor_docs.displayed_name);
-                graphics_draw_text(main_x + 380, main_y + 140, buf, 0x111111FF);
+                graphics_draw_text(main_x + 380, main_y + 140, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "APELLIDO: %s", ctx->visitor_docs.displayed_last_name);
-                graphics_draw_text(main_x + 380, main_y + 200, buf, 0x111111FF);
+                graphics_draw_text(main_x + 380, main_y + 200, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "NO. IDENTIFICACION: %s", ctx->visitor_docs.displayed_id_number);
-                graphics_draw_text(main_x + 380, main_y + 260, buf, 0x111111FF);
+                graphics_draw_text(main_x + 380, main_y + 260, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "FECHA EXPIRACION: %s", ctx->visitor_docs.displayed_expiration);
-                graphics_draw_text(main_x + 380, main_y + 320, buf, 0x111111FF);
+                graphics_draw_text(main_x + 380, main_y + 320, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "APARTAMENTO: %s (%s)", ctx->visitor_docs.displayed_apartment, visitor->apt_number_en);
-                graphics_draw_text(main_x + 380, main_y + 380, buf, 0x111111FF);
+                graphics_draw_text(main_x + 380, main_y + 380, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "OCUPACION: %s", visitor->occupation_es);
-                graphics_draw_text(main_x + 60, main_y + 490, buf, 0x222222FF);
-
-                // Official Seal Stamp
-                graphics_draw_rect(main_x + 950, main_y + 420, 180, 180, 0x99222244);
-                graphics_draw_text(main_x + 970, main_y + 500, "SELLO D.D.D.", 0x8b1e1eFF);
+                graphics_draw_text(main_x + 60, main_y + 490, buf, 0xFF222222);
 
             } else if (ctx->active_doc_tab == DOC_TAB_ENTRY_REQUEST) {
-                // Entry Request Permit
-                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xf0e6d2FF);
-                graphics_draw_rect(main_x, main_y, main_w, 60, 0x2e4a62FF);
+                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xFFf0e6d2);
+                graphics_draw_rect(main_x, main_y, main_w, 60, 0xFF2e4a62);
                 graphics_draw_text(main_x + 30, main_y + 18, "SOLICITUD DE INGRESO - DEPARTAMENTO DE DETECCION", 0xFFFFFFFF);
 
                 char buf[256];
                 snprintf(buf, sizeof(buf), "Solicitante: %s %s", ctx->visitor_docs.displayed_name, ctx->visitor_docs.displayed_last_name);
-                graphics_draw_text(main_x + 80, main_y + 140, buf, 0x111111FF);
+                graphics_draw_text(main_x + 80, main_y + 140, buf, 0xFF111111);
 
                 snprintf(buf, sizeof(buf), "Destino: Apartamento %s", ctx->visitor_docs.displayed_apartment);
-                graphics_draw_text(main_x + 80, main_y + 210, buf, 0x111111FF);
+                graphics_draw_text(main_x + 80, main_y + 210, buf, 0xFF111111);
 
-                graphics_draw_text(main_x + 80, main_y + 280, "Motivo de Ingreso: Regreso a su residencia habitual tras jornada laboral.", 0x222222FF);
-                graphics_draw_text(main_x + 80, main_y + 350, "Estado de Autorizacion: APROBADO PREVIAMENTE POR D.D.D.", 0x1b5e20FF);
-
-                // D.D.D. Verification stamp box
-                graphics_draw_rect(main_x + 850, main_y + 400, 240, 160, 0x2e4a6233);
-                graphics_draw_text(main_x + 880, main_y + 470, "FIRMA D.D.D. OK", 0x2e4a62FF);
+                graphics_draw_text(main_x + 80, main_y + 280, "Motivo de Ingreso: Regreso a su residencia habitual tras jornada laboral.", 0xFF222222);
+                graphics_draw_text(main_x + 80, main_y + 350, "Estado de Autorizacion: APROBADO PREVIAMENTE POR D.D.D.", 0xFF1b5e20);
 
             } else if (ctx->active_doc_tab == DOC_TAB_TODAYS_LIST) {
-                // Today's Approved List
-                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xe8e4d8FF);
-                graphics_draw_rect(main_x, main_y, main_w, 60, 0x3d352eFF);
-                graphics_draw_text(main_x + 30, main_y + 18, "LISTA DE INQUILINOS PROGRAMADOS PARA HOY", 0xFFFFFFFF);
+                if (ctx->tex_todays_list) {
+                    graphics_draw_texture_scaled(ctx->tex_todays_list, main_x, main_y, main_w, main_h);
+                } else {
+                    graphics_draw_rect(main_x, main_y, main_w, main_h, 0xFFe8e4d8);
+                    graphics_draw_rect(main_x, main_y, main_w, 60, 0xFF3d352e);
+                }
 
-                graphics_draw_text(main_x + 60, main_y + 100, "Los siguientes residentes estan registrados para retornar hoy:", 0x333333FF);
-
-                // Show 6 entries on today's list
                 for (int i = 0; i < 6; i++) {
                     int n_idx = (ctx->processed_count + i) % 20;
                     const NeighborData* n = &g_neighbors[n_idx];
@@ -422,19 +454,13 @@ void game_render(GameContext* ctx) {
                     snprintf(line, sizeof(line), "%d. %s %s  -  Depto: %s  -  Tel: %s",
                              i + 1, n->name, n->last_name, n->apt_number_es, n->phone_number);
 
-                    // Highlight current visitor if present
-                    uint32_t col = (ctx->visitor_docs.is_on_today_list && n_idx == ctx->visitor_index) ? 0x8b1e1eFF : 0x111111FF;
+                    uint32_t col = (ctx->visitor_docs.is_on_today_list && n_idx == ctx->visitor_index) ? 0xFF8b1e1e : 0xFF111111;
                     graphics_draw_text(main_x + 80, main_y + 160 + (i * 65), line, col);
                 }
 
-                if (!ctx->visitor_docs.is_on_today_list) {
-                    graphics_draw_text(main_x + 80, main_y + 600, "(!) ATENCION: El visitante NO aparece en la lista autorizada de hoy.", 0xc62828FF);
-                }
-
             } else if (ctx->active_doc_tab == DOC_TAB_CHECKLIST) {
-                // Verification Checklist
-                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xf7f5ebFF);
-                graphics_draw_rect(main_x, main_y, main_w, 60, 0x8b1e1eFF);
+                graphics_draw_rect(main_x, main_y, main_w, main_h, 0xFFf7f5eb);
+                graphics_draw_rect(main_x, main_y, main_w, 60, 0xFF8b1e1e);
                 graphics_draw_text(main_x + 30, main_y + 18, "LISTA DE COTEJO D.D.D. (PROTOCOLO ANTI-DOPPELGANGER)", 0xFFFFFFFF);
 
                 const char* items[6] = {
@@ -457,29 +483,26 @@ void game_render(GameContext* ctx) {
 
                 for (int c = 0; c < 6; c++) {
                     int cy = main_y + 110 + (c * 70);
-                    // Checkbox
-                    graphics_draw_rect(main_x + 60, cy, 40, 40, 0x332820FF);
+                    graphics_draw_rect(main_x + 60, cy, 40, 40, 0xFF332820);
                     if (checks[c]) {
-                        graphics_draw_rect(main_x + 68, cy + 8, 24, 24, 0x2e7d32FF); // Checked mark
+                        graphics_draw_rect(main_x + 68, cy + 8, 24, 24, 0xFF2e7d32);
                     }
-                    graphics_draw_text(main_x + 120, cy + 8, items[c], 0x111111FF);
+                    graphics_draw_text(main_x + 120, cy + 8, items[c], 0xFF111111);
                 }
 
-                // Reference appearance from database
-                graphics_draw_text(main_x + 60, main_y + 570, "Rasgos en Archivo:", 0x8b1e1eFF);
-                graphics_draw_text(main_x + 60, main_y + 610, visitor->appearance_es, 0x333333FF);
+                graphics_draw_text(main_x + 60, main_y + 570, "Rasgos en Archivo:", 0xFF8b1e1e);
+                graphics_draw_text(main_x + 60, main_y + 610, visitor->appearance_es, 0xFF333333);
             }
 
-            // Bottom controls guide
-            graphics_draw_text(main_x + 350, 930, "[L1/R1] Cambiar Documento   [X] Marcar/Desmarcar   [O] Volver al Despacho", 0xFFD700FF);
+            graphics_draw_text(main_x + 350, 930, "[L1/R1] Cambiar Documento   [X] Marcar   [O] Volver al Despacho", 0xFFFFD700);
             break;
         }
 
         case STATE_EMERGENCY_ALARM: {
-            graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0x7f0000FF);
+            graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF7f0000);
             graphics_draw_text(480, 400, "!!! ALARMA DE EMERGENCIA D.D.D. ACTIVADA !!!", 0xFFFFFFFF);
-            graphics_draw_text(520, 480, "Escuadron de Limpieza en Camino...", 0xFFCCCCFF);
-            graphics_draw_text(600, 650, "Pulsa [O] para Regresar", 0xFFD700FF);
+            graphics_draw_text(520, 480, "Escuadron de Limpieza en Camino...", 0xFFFFCCCC);
+            graphics_draw_text(600, 650, "Pulsa [O] para Regresar", 0xFFFFD700);
             break;
         }
 
@@ -487,10 +510,15 @@ void game_render(GameContext* ctx) {
             break;
     }
 
-    // DualShock 3 Pointer
-    graphics_draw_cursor(ctx->cursor.x, ctx->cursor.y, 0xFFFFFFFF);
+    // Draw Cursor
+    if (ctx->tex_cursor) {
+        graphics_draw_texture(ctx->tex_cursor, (int)ctx->cursor.x - 16, (int)ctx->cursor.y - 16);
+    } else {
+        graphics_draw_cursor(ctx->cursor.x, ctx->cursor.y, 0xFFFFFFFF);
+    }
 }
 
 void game_cleanup(GameContext* ctx) {
-    printf("[Game] Context cleaned up cleanly.\n");
+    game_free_textures(ctx);
+    printf("[Game] Cleaned up textures and context.\n");
 }
