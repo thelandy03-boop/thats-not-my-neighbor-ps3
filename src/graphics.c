@@ -88,7 +88,11 @@ bool graphics_init(void) {
     videoConfiguration vconfig;
     memset(&vconfig, 0, sizeof(videoConfiguration));
     vconfig.resolution = VIDEO_RESOLUTION_1080;
-    vconfig.format = VIDEO_FORMAT_X8R8G8B8;
+#ifdef VIDEO_BUFFER_FORMAT_XRGB
+    vconfig.format = VIDEO_BUFFER_FORMAT_XRGB;
+#else
+    vconfig.format = 0;
+#endif
     vconfig.pitch = SCREEN_WIDTH * 4;
     vconfig.aspect = VIDEO_ASPECT_16_9;
 
@@ -233,15 +237,36 @@ void graphics_draw_texture(const Texture* tex, int x, int y) {
     }
 }
 
-void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_x, int clip_y, int clip_w, int clip_h) {
+void graphics_draw_texture_scaled(const Texture* tex, int x, int y, int dest_w, int dest_h) {
     if (!tex || !tex->pixels || !s_framebuffer) return;
-    if (clip_w <= 0 || clip_h <= 0) return;
+    if (dest_w <= 0 || dest_h <= 0) return;
+
+    for (int dy = 0; dy < dest_h; dy++) {
+        int py = y + dy;
+        if (py < 0 || py >= SCREEN_HEIGHT) continue;
+
+        int sy = (dy * tex->height) / dest_h;
+        uint32_t* dst_ptr = &s_framebuffer[py * SCREEN_WIDTH];
+        const uint32_t* src_ptr = &tex->pixels[sy * tex->width];
+
+        for (int dx = 0; dx < dest_w; dx++) {
+            int px = x + dx;
+            if (px < 0 || px >= SCREEN_WIDTH) continue;
+            int sx = (dx * tex->width) / dest_w;
+            dst_ptr[px] = blend_pixel(dst_ptr[px], src_ptr[sx]);
+        }
+    }
+}
+
+void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_y, int clip_h) {
+    if (!tex || !tex->pixels || !s_framebuffer) return;
+    if (clip_h <= 0) return;
 
     int start_y = (clip_y < 0) ? 0 : clip_y;
     int end_y = ((clip_y + clip_h) > tex->height) ? tex->height : (clip_y + clip_h);
 
     for (int row = start_y; row < end_y; row++) {
-        int py = y + row;
+        int py = y + (row - start_y);
         if (py < 0 || py >= SCREEN_HEIGHT) continue;
 
         uint32_t* dst_ptr = &s_framebuffer[py * SCREEN_WIDTH];
