@@ -209,6 +209,23 @@ function neighbors.spawn_visitor(force_doppel)
     local template_idx = math.random(1, 2) -- Focus on Roman and Francis who have full sprite assets
     local base = neighbors.database[template_idx]
 
+    local mouth_anim_frames = {}
+    if base.key == "ROMAN_STILNSKY" then
+        mouth_anim_frames = {
+            "Char_Roman_Mouth_01.png",
+            "Char_Roman_Mouth_02.png",
+            "Char_Roman_Mouth_03.png",
+            "Char_Roman_Mouth_04.png",
+            "Char_Roman_Mouth_05.png"
+        }
+    else
+        mouth_anim_frames = {
+            "Char_Francis_Mouth_Doppel_01.png",
+            "Char_Francis_Mouth_Doppel_02.png",
+            "Char_Francis_Mouth_Doppel_03.png"
+        }
+    end
+
     local visitor = {
         template = base,
         name = base.name,
@@ -223,10 +240,29 @@ function neighbors.spawn_visitor(force_doppel)
         physical_extra_eye = false,
         physical_uzumaki = false,
         physical_blood = false,
-        photo_tampered = false
+        photo_tampered = false,
+        mouth_frames = mouth_anim_frames,
+        dialogues = {}
     }
 
     if visitor.is_doppel then
+        -- Doppelgänger creepy eerie dialogues
+        if base.key == "ROMAN_STILNSKY" then
+            visitor.dialogues = {
+                greeting     = "Saludos, guardia humano. Deseo entrar a mi... hogar.",
+                reason       = "Deseo... estar adentro. Con los demas... inquilinos.",
+                id_inquiry   = "El tiempo y los numeros son conceptos irrelevantes para nosotros.",
+                list_inquiry = "Las listas se queman. Mi presencia es inevitable."
+            }
+        else
+            visitor.dialogues = {
+                greeting     = "Abre la puerta... tengo mucha... sed de sangre fresca.",
+                reason       = "Vine a alimentarme de los residentes del tercer piso.",
+                id_inquiry   = "Mi carnet es tan real como esta carne que llevo puesta.",
+                list_inquiry = "No necesito que me anoten en ningun papel para pasar."
+            }
+        end
+
         -- Select 1 to 3 anomalies
         local roll = math.random(1, 5)
 
@@ -259,6 +295,23 @@ function neighbors.spawn_visitor(force_doppel)
             -- Name not on today's list
             visitor.last_name = "Stilnsky-Imposter"
             table.insert(visitor.flaws, neighbors.FLAW_TYPES.NOT_ON_TODAY_LIST)
+        end
+    else
+        -- Legitimate Human Citizen dialogues
+        if base.key == "ROMAN_STILNSKY" then
+            visitor.dialogues = {
+                greeting     = "Buenas tardes. Regreso de mi trabajo de contador en el banco central.",
+                reason       = "Vengo a descansar y cenar con mi esposa Lois en el depto F01-01.",
+                id_inquiry   = "Mi carnet esta en regla. Cualquier falla de fecha es error de imprenta del DDD.",
+                list_inquiry = "Vivo aqui desde hace cinco anos, siempre he figurado en los registros."
+            }
+        else
+            visitor.dialogues = {
+                greeting     = "Buenas tardes. Traigo el reparto de leche para los vecinos del tercer piso.",
+                reason       = "Hago las entregas del turno vespertino y luego voy a mi departamento F03-02.",
+                id_inquiry   = "Mi credencial fue sellada y aprobada por la jefatura lechera del D.D.D.",
+                list_inquiry = "Hago esta misma ruta a diario, compruébelo con el resto del edificio."
+            }
         end
     end
 

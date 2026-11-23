@@ -1,5 +1,5 @@
 -- That's Not My Neighbor - PS3 Demake
--- main.lua: Core Game Loop, State Controller, and Security Desk
+-- main.lua: Core Game Loop, State Controller, Interrogation, and Security Desk
 
 local neighbors = require("neighbors")
 
@@ -12,7 +12,7 @@ local STATES = {
     PHONE_CALL        = 5, -- Rotary phone interface (DDD 3312 & tenant apartments)
     EMERGENCY_ALARM   = 6, -- Alarm siren, DDD cleaning protocol active
     DOPPEL_ATTACK     = 7, -- Player made a fatal mistake!
-    SUMMARY_VICTORY   = 8, -- All visitors cleared successfully
+    SUMMARY_VICTORY   = 8, -- All visitors cleared successfully (Official DDD Grade)
     INSPECT_FLOORS    = 9, -- Building Tenants Directory Binder
     INSPECT_CHECKLIST = 10 -- Interactive DDD Verification Checklist Sheet
 }
@@ -42,6 +42,14 @@ local game = {
     visitors_cleared = 0,
     doppels_eliminated = 0,
     innocents_killed = 0,
+
+    -- Dialogue & Interrogation System
+    dialogue = {
+        text = "",
+        talking_timer = 0,
+        mouth_frame_idx = 1,
+        anim_tick = 0
+    },
 
     -- Today's Approved Entry List
     todays_list = {},
@@ -74,6 +82,13 @@ local game = {
         desk_checklist = { x = 940,  y = 520, w = 120, h = 110 }
     },
 
+    -- Interrogation Question Buttons (available when window is open)
+    interrogate_buttons = {
+        reason = { x = 160, y = 140, w = 240, h = 45, label = "[?] MOTIVO DE VISITA" },
+        id     = { x = 160, y = 200, w = 240, h = 45, label = "[?] CUESTIONAR ID" },
+        list   = { x = 160, y = 260, w = 240, h = 45, label = "[?] CUESTIONAR LISTA" }
+    },
+
     -- Directory Floor Tabs
     floor_tabs = {
         [1] = { x = 240, y = 80,  w = 140, h = 40, floor = 1, label = "PISO 1" },
@@ -100,6 +115,16 @@ local game = {
     banner_timer = 300
 }
 
+-- Trigger Speech Dialogue with Mouth Animation
+local function trigger_speech(text)
+    if not text then return end
+    game.dialogue.text = text
+    game.dialogue.talking_timer = 240 -- ~4 seconds
+    game.dialogue.mouth_frame_idx = 1
+    game.dialogue.anim_tick = 0
+    play_sfx("SFX_Select.wav")
+end
+
 -- Helper to Reset Verification Checklist
 local function reset_checklist()
     game.checklist = {
@@ -125,7 +150,6 @@ function game_init()
     play_music("Music_Dark.ogg", true)
 
     reset_checklist()
-    -- First visitor is legitimate
     game.current_visitor = neighbors.spawn_visitor(false)
 end
 
@@ -146,6 +170,8 @@ local function spawn_next()
     game.current_visitor = neighbors.spawn_visitor(is_doppel)
     game.shutter_open = false
     game.state = STATES.WAIT_NEIGHBOR
+    game.dialogue.text = ""
+    game.dialogue.talking_timer = 0
     reset_checklist()
 
     game.message_banner = "NUEVO INDIVIDUO EN LA PUERTA. ABRA LA VENTANILLA PARA EVALUAR."
@@ -195,12 +221,10 @@ local function handle_phone_dialed_number(number)
     play_sfx("SFX_Phone_Ring.ogg")
 
     if number == "3312" then
-        -- D.D.D. Central Hotline
         game.phone.response_text = "D.D.D.: PROTOCOLO 3312 ACTIVO. SI DETECTO ANOMALIA, ACTIVE LA ALARMA."
         return
     end
 
-    -- Look up if dialed number belongs to any apartment
     local found_apt = nil
     for floor_num = 1, 3 do
         for _, apt in ipairs(neighbors.floors[floor_num].apartments) do
@@ -217,17 +241,13 @@ local function handle_phone_dialed_number(number)
         return
     end
 
-    -- If dialing the apartment of the current visitor outside
     if game.current_visitor and game.current_visitor.displayed_phone == number then
         if game.current_visitor.is_doppel then
-            -- DOPPELGANGER UNMASKED! The real resident is at home!
             game.phone.response_text = string.format("DEPTO %s: '¿Hola? Estoy en casa... ¿Quien esta en la cabina?'", found_apt.apt)
         else
-            -- Real resident is outside, so nobody answers
             game.phone.response_text = string.format("DEPTO %s: Suena el telefono pero nadie contesta...", found_apt.apt)
         end
     else
-        -- Dialing another neighbor's apartment
         game.phone.response_text = string.format("DEPTO %s (%s): '¿Si? ¿Quien habla? Estoy ocupado.'", found_apt.apt, found_apt.tenants)
     end
 end
@@ -244,7 +264,6 @@ function game_update()
         game.cursor.y = game.cursor.y + (pad.analog_ly * game.cursor.speed)
     end
 
-    -- Clamp cursor to 720p screen bounds
     if game.cursor.x < 10.0  then game.cursor.x = 10.0 end
     if game.cursor.x > 1270.0 then game.cursor.x = 1270.0 end
     if game.cursor.y < 10.0  then game.cursor.y = 10.0 end
@@ -258,6 +277,20 @@ function game_update()
 
     if game.banner_timer > 0 then
         game.banner_timer = game.banner_timer - 1
+    end
+
+    -- Mouth Animation Tick
+    if game.dialogue.talking_timer > 0 then
+        game.dialogue.talking_timer = game.dialogue.talking_timer - 1
+        game.dialogue.anim_tick = game.dialogue.anim_tick + 1
+        if game.dialogue.anim_tick % 7 == 0 and game.current_visitor and game.current_visitor.mouth_frames then
+            local count = #game.current_visitor.mouth_frames
+            if count > 0 then
+                game.dialogue.mouth_frame_idx = (game.dialogue.mouth_frame_idx % count) + 1
+            end
+        end
+    else
+        game.dialogue.mouth_frame_idx = 1
     end
 
     -- 2. State-Specific Updates
@@ -280,6 +313,9 @@ function game_update()
     elseif game.state == STATES.SUMMARY_VICTORY then
         if clicked then
             game.visitor_queue = 5
+            game.visitors_cleared = 0
+            game.doppels_eliminated = 0
+            game.innocents_killed = 0
             spawn_next()
         end
 
@@ -290,7 +326,6 @@ function game_update()
         end
 
     elseif game.state == STATES.INSPECT_FLOORS then
-        -- L1 / R1 switch floors
         if l1_pressed then
             game.current_floor = math.max(1, game.current_floor - 1)
             play_sfx("SFX_Pick_Up_Folder.wav")
@@ -303,7 +338,6 @@ function game_update()
             play_sfx("SFX_Pick_Up_Folder.wav")
             game.state = STATES.EXAMINE
         elseif clicked then
-            -- Check floor tabs
             for _, tab in ipairs(game.floor_tabs) do
                 if point_in_rect(game.cursor.x, game.cursor.y, tab) then
                     game.current_floor = tab.floor
@@ -318,11 +352,9 @@ function game_update()
             play_sfx("SFX_Pick_Up_Folder.wav")
             game.state = STATES.EXAMINE
         elseif clicked then
-            -- Check if clicking on checklist rows (Y = 170 + i * 65)
             for i = 1, #game.checklist do
                 local row_rect = { x = 200, y = 140 + (i * 65), w = 880, h = 50 }
                 if point_in_rect(game.cursor.x, game.cursor.y, row_rect) then
-                    -- Cycle state: 0 (empty) -> 1 (OK) -> 2 (DISCREPANCY) -> 0
                     game.checklist[i].state = (game.checklist[i].state + 1) % 3
                     play_sfx("SFX_Write.wav")
                     break
@@ -361,6 +393,17 @@ function game_update()
     else
         -- Active security desk interaction
         if clicked then
+            -- Interrogation Options (When window is open)
+            if game.shutter_open and game.current_visitor and game.current_visitor.dialogues then
+                if point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.reason) then
+                    trigger_speech(game.current_visitor.dialogues.reason)
+                elseif point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.id) then
+                    trigger_speech(game.current_visitor.dialogues.id_inquiry)
+                elseif point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.list) then
+                    trigger_speech(game.current_visitor.dialogues.list_inquiry)
+                end
+            end
+
             -- Toggle Shutter
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.shutter_toggle) then
                 game.shutter_open = not game.shutter_open
@@ -368,9 +411,13 @@ function game_update()
                 if game.shutter_open then
                     game.state = STATES.EXAMINE
                     game.message_banner = "VENTANILLA ABIERTA. OBSERVE ATENTAMENTE EL ROSTRO Y DOCUMENTOS."
+                    if game.current_visitor and game.current_visitor.dialogues then
+                        trigger_speech(game.current_visitor.dialogues.greeting)
+                    end
                 else
                     game.state = STATES.WAIT_NEIGHBOR
                     game.message_banner = "VENTANILLA CERRADA."
+                    game.dialogue.talking_timer = 0
                 end
             end
 
@@ -469,9 +516,20 @@ local function render_booth()
         if vis.template.nose_asset then
             draw_sprite(vis.template.nose_asset, tx + 70, ty + 70, 60, 60)
         end
-        if vis.template.mouth_asset then
-            draw_sprite(vis.template.mouth_asset, tx + 60, ty + 130, 80, 40)
+
+        -- Animated Mouth Flap Sync
+        local mouth_sprite = vis.template.mouth_asset
+        if vis.mouth_frames and #vis.mouth_frames > 0 then
+            if game.dialogue.talking_timer > 0 then
+                mouth_sprite = vis.mouth_frames[game.dialogue.mouth_frame_idx] or vis.mouth_frames[1]
+            else
+                mouth_sprite = vis.mouth_frames[1]
+            end
         end
+        if mouth_sprite then
+            draw_sprite(mouth_sprite, tx + 60, ty + 130, 80, 40)
+        end
+
         if vis.template.hat_asset then
             draw_sprite(vis.template.hat_asset, tx + 10, ty - 50, 220, 110)
         end
@@ -482,6 +540,19 @@ local function render_booth()
         end
         if vis.physical_uzumaki then
             draw_sprite("Char_Roman_Doppel_Uzumaki_Face.png", tx + 20, ty, 200, 190)
+        end
+
+        -- Speech Balloon Overlay above window
+        if game.dialogue.talking_timer > 0 and game.dialogue.text ~= "" then
+            draw_rect(340, 35, 600, 50, 10, 10, 15, 235)
+            draw_text(355, 52, game.dialogue.text, 255, 240, 150, 255)
+        end
+
+        -- Interrogation Options Panel on Left
+        for _, btn in pairs(game.interrogate_buttons) do
+            draw_rect(btn.x, btn.y, btn.w, btn.h, 25, 25, 30, 210)
+            draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 45, 45, 55, 230)
+            draw_text(btn.x + 15, btn.y + 15, btn.label, 255, 255, 255, 255)
         end
     end
 
@@ -517,7 +588,7 @@ local function render_booth()
     end
     draw_sprite("Todays_list.png", 680, 530, 110, 100)
 
-    -- Carpetas y Documentos Nuevos en el Escritorio
+    -- Carpetas y Documentos en el Escritorio
     draw_sprite("Folder_floors.png", 800, 520, 130, 110)
     draw_text(810, 615, "CARPETA PISOS", 255, 255, 255, 255)
 
@@ -594,7 +665,6 @@ local function render_floors_directory()
     draw_rect(100, 40, 1080, 640, 15, 15, 20, 240)
     draw_sprite("Folder_floors.png", 140, 60, 1000, 600)
 
-    -- Floor Navigation Tabs
     for _, tab in ipairs(game.floor_tabs) do
         if tab.floor == game.current_floor then
             draw_rect(tab.x, tab.y, tab.w, tab.h, 220, 200, 160, 255)
@@ -605,11 +675,10 @@ local function render_floors_directory()
         end
     end
 
-    -- Draw the 4 apartments on current floor
     local floor_data = neighbors.floors[game.current_floor]
     if floor_data then
         local y_pos = 150
-        for i, apt in ipairs(floor_data.apartments) do
+        for _, apt in ipairs(floor_data.apartments) do
             draw_rect(220, y_pos, 840, 100, 245, 240, 225, 255)
             draw_sprite(apt.photo, 230, y_pos + 10, 70, 80)
 
@@ -635,16 +704,13 @@ local function render_checklist_overlay()
 
     for i, item in ipairs(game.checklist) do
         local box_y = 140 + (i * 65)
-        -- Checkbox outline
         draw_rect(220, box_y, 45, 45, 40, 40, 40, 255)
         draw_rect(224, box_y + 4, 37, 37, 255, 255, 255, 255)
 
         if item.state == 1 then
-            -- Checked OK (Green checkmark ✔)
             draw_rect(228, box_y + 8, 29, 29, 40, 180, 40, 255)
             draw_text(236, box_y + 14, "V", 255, 255, 255, 255)
         elseif item.state == 2 then
-            -- Checked DISCREPANCY (Red cross ✘)
             draw_rect(228, box_y + 8, 29, 29, 200, 30, 30, 255)
             draw_text(236, box_y + 14, "X", 255, 255, 255, 255)
         end
@@ -676,7 +742,6 @@ local function render_phone_screen()
         draw_text(350, 175, game.phone.response_text, 255, 220, 50, 255)
     end
 
-    -- Draw dial hitboxes
     for _, btn in pairs(game.phone_dial_buttons) do
         draw_rect(btn.x, btn.y, btn.w, btn.h, 40, 40, 40, 150)
         if btn.digit then
@@ -707,18 +772,50 @@ local function render_attack_screen()
     draw_text(440, 400, "Pulsa (X) para reiniciar el turno.", 255, 255, 255, 255)
 end
 
--- Render Victory Summary
+-- Render Official DDD Clearance Certificate & Letter Grade
 local function render_victory_screen()
-    draw_rect(150, 80, 980, 560, 20, 35, 20, 245)
-    draw_sprite("DDD_logo.png", 560, 120, 160, 160)
+    draw_rect(100, 50, 1080, 620, 15, 20, 15, 245)
+    draw_rect(130, 70, 1020, 580, 245, 240, 220, 255)
 
-    draw_text(440, 310, "EVALUACION DE TURNO D.D.D. - COMPLETO", 100, 255, 100, 255)
-    draw_text(350, 370, "Residentes Legítimos Admitidos: " .. game.visitors_cleared, 255, 255, 255, 255)
-    draw_text(350, 410, "Doppelgängers Neutralizados:    " .. game.doppels_eliminated, 255, 255, 255, 255)
-    draw_text(350, 450, "Inocentes Eliminados por Error: " .. game.innocents_killed, 255, 100, 100, 255)
+    draw_sprite("DDD_logo.png", 560, 90, 160, 80)
+    draw_text(320, 185, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS (D.D.D.)", 20, 20, 20, 255)
+    draw_text(360, 215, "CERTIFICADO OFICIAL DE EVALUACION DE TURNO", 40, 40, 40, 255)
+    draw_rect(200, 245, 880, 2, 80, 80, 80, 255)
 
-    draw_rect(420, 520, 440, 45, 0, 0, 0, 200)
-    draw_text(460, 535, "PULSA (X) PARA INICIAR NUEVO TURNO", 255, 255, 0, 255)
+    -- Metrics Breakdown
+    draw_text(260, 280, "Residentes Legítimos Admitidos:     " .. game.visitors_cleared, 30, 30, 30, 255)
+    draw_text(260, 325, "Doppelgängers Neutralizados:        " .. game.doppels_eliminated, 30, 140, 30, 255)
+    draw_text(260, 370, "Inocentes Eliminados por Error:     " .. game.innocents_killed, 200, 30, 30, 255)
+
+    -- Rank Calculation
+    local rank_letter = "S"
+    local rank_text = "EXCELENCIA - TURNO PERFECTO"
+    local rank_color_r = 30
+    local rank_color_g = 180
+    local rank_color_b = 30
+
+    if game.innocents_killed == 1 then
+        rank_letter = "B"
+        rank_text = "APROBADO CON OBSERVACIONES"
+        rank_color_r = 200
+        rank_color_g = 160
+        rank_color_b = 30
+    elseif game.innocents_killed >= 2 then
+        rank_letter = "F"
+        rank_text = "TERMINACION INMEDIATA DE CONTRATO"
+        rank_color_r = 220
+        rank_color_g = 20
+        rank_color_b = 20
+    end
+
+    -- Stamp Seal Box
+    draw_rect(760, 270, 240, 140, rank_color_r, rank_color_g, rank_color_b, 255)
+    draw_rect(765, 275, 230, 130, 245, 240, 220, 255)
+    draw_text(810, 300, "RANGO: " .. rank_letter, rank_color_r, rank_color_g, rank_color_b, 255)
+    draw_text(775, 360, rank_text, rank_color_r, rank_color_g, rank_color_b, 255)
+
+    draw_rect(400, 560, 480, 45, 20, 20, 20, 230)
+    draw_text(440, 575, "PULSA (X) PARA INICIAR UN NUEVO TURNO", 255, 255, 0, 255)
 end
 
 -- Main Render Loop (called every frame from C)
