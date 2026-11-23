@@ -37,6 +37,7 @@ neighbors.database = {
         head_asset = "Char_Francis_Head.png",
         body_asset = "Char_Francis_Body.png",
         hat_asset = "Char_Francis_Hat.png",
+        eyebrows_asset = "Char_Francis_Eyebrows.png",
         eyes_asset = "Char_Francis_Eyes.png",
         nose_asset = "Char_Francis_Nose.png",
         mouth_asset = "Char_Francis_Mouth_Doppel_01.png",
@@ -205,7 +206,7 @@ function neighbors.generate_todays_list()
 end
 
 -- Spawn a visitor (can be a legitimate neighbor or a disguised doppelgänger)
-function neighbors.spawn_visitor(force_doppel)
+function neighbors.spawn_visitor(force_doppel, is_nightmare)
     local template_idx = math.random(1, 2) -- Focus on Roman and Francis who have full sprite assets
     local base = neighbors.database[template_idx]
 
@@ -226,6 +227,13 @@ function neighbors.spawn_visitor(force_doppel)
         }
     end
 
+    local is_fake = force_doppel
+    if is_nightmare and is_fake == nil then
+        is_fake = (math.random() > 0.2) -- 80% doppelgängers in Nightmare mode
+    elseif is_fake == nil then
+        is_fake = (math.random() > 0.5)
+    end
+
     local visitor = {
         template = base,
         name = base.name,
@@ -235,19 +243,32 @@ function neighbors.spawn_visitor(force_doppel)
         displayed_apt = base.apartment,
         displayed_phone = base.phone,
         occupation = base.occupation,
-        is_doppel = force_doppel or false,
+        is_doppel = is_fake or false,
         flaws = {},
         physical_extra_eye = false,
         physical_uzumaki = false,
         physical_blood = false,
+        physical_extra_arms = false,
+        flaws_has_ears = false,
+        flaws_has_eyebrows = false,
+        flaws_has_eyes = false,
+        flaws_has_nose = false,
         photo_tampered = false,
+        photo_asset = base.photo_asset,
         mouth_frames = mouth_anim_frames,
         dialogues = {}
     }
 
     if visitor.is_doppel then
         -- Doppelgänger creepy eerie dialogues
-        if base.key == "ROMAN_STILNSKY" then
+        if is_nightmare then
+            visitor.dialogues = {
+                greeting     = "LA NOCHE SE CONSUME. NUESTRA FORMA RECLAMA ESTE LUGAR.",
+                reason       = "DESPOJAR LA CARNE Y ASIMILAR A CADA RESIDENTE DEL EDIFICIO.",
+                id_inquiry   = "TUS PAPELES HUMANOS SE DESINTEGRARAN EN EL ABISMO.",
+                list_inquiry = "NO EXISTE REGISTRO QUE PUEDA DETENER LA ASIMILACION."
+            }
+        elseif base.key == "ROMAN_STILNSKY" then
             visitor.dialogues = {
                 greeting     = "Saludos, guardia humano. Deseo entrar a mi... hogar.",
                 reason       = "Deseo... estar adentro. Con los demas... inquilinos.",
@@ -263,38 +284,62 @@ function neighbors.spawn_visitor(force_doppel)
             }
         end
 
-        -- Select 1 to 3 anomalies
-        local roll = math.random(1, 5)
+        local anomaly_count = is_nightmare and math.random(2, 3) or 1
+        for a = 1, anomaly_count do
+            local roll = math.random(1, 6)
 
-        if roll == 1 then
-            -- Mutate last 3 digits of ID
-            local num = visitor.displayed_id
-            visitor.displayed_id = string.sub(num, 1, #num - 3) .. tostring(math.random(100, 999))
-            table.insert(visitor.flaws, neighbors.FLAW_TYPES.WRONG_ID_NUMBER)
-        elseif roll == 2 then
-            -- Expired document
-            visitor.displayed_exp = "11/1952"
-            table.insert(visitor.flaws, neighbors.FLAW_TYPES.EXPIRED_ID)
-        elseif roll == 3 then
-            -- Fake apartment
-            visitor.displayed_apt = "F04-99"
-            table.insert(visitor.flaws, neighbors.FLAW_TYPES.WRONG_APARTMENT)
-        elseif roll == 4 then
-            -- Physical grotesque mutation
-            if base.key == "ROMAN_STILNSKY" then
-                if math.random() > 0.5 then
-                    visitor.physical_extra_eye = true
+            if roll == 1 then
+                -- Mutate last 3 digits of ID
+                local num = visitor.displayed_id
+                visitor.displayed_id = string.sub(num, 1, #num - 3) .. tostring(math.random(100, 999))
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.WRONG_ID_NUMBER)
+            elseif roll == 2 then
+                -- Expired document
+                visitor.displayed_exp = "11/1952"
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.EXPIRED_ID)
+            elseif roll == 3 then
+                -- Fake apartment
+                visitor.displayed_apt = "F04-99"
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.WRONG_APARTMENT)
+            elseif roll == 4 then
+                -- Physical grotesque mutation
+                if base.key == "ROMAN_STILNSKY" then
+                    local p_roll = math.random(1, 3)
+                    if p_roll == 1 then
+                        visitor.physical_extra_eye = true
+                    elseif p_roll == 2 then
+                        visitor.physical_uzumaki = true
+                    else
+                        visitor.physical_extra_arms = true
+                    end
                 else
-                    visitor.physical_uzumaki = true
+                    local f_roll = math.random(1, 4)
+                    if f_roll == 1 or is_nightmare then
+                        visitor.physical_blood = true
+                    end
+                    if f_roll == 2 then
+                        visitor.flaws_has_ears = true
+                    elseif f_roll == 3 then
+                        visitor.flaws_has_eyes = true
+                    elseif f_roll == 4 then
+                        visitor.flaws_has_nose = true
+                    end
                 end
-            else
-                visitor.physical_blood = true
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.PHYSICAL_ANOMALY)
+            elseif roll == 5 then
+                -- Name not on today's list
+                visitor.last_name = base.last_name .. "-Doppel"
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.NOT_ON_TODAY_LIST)
+            elseif roll == 6 then
+                -- Tampered Photo
+                visitor.photo_tampered = true
+                if base.key == "FRANCIS_MOSSES" then
+                    visitor.photo_asset = "Char_Francis_Small_Photo_Doppel_01.png"
+                else
+                    visitor.photo_asset = "Char_Roman_Doppel_01_Small_Photo.png"
+                end
+                table.insert(visitor.flaws, neighbors.FLAW_TYPES.WRONG_ID_NUMBER)
             end
-            table.insert(visitor.flaws, neighbors.FLAW_TYPES.PHYSICAL_ANOMALY)
-        else
-            -- Name not on today's list
-            visitor.last_name = "Stilnsky-Imposter"
-            table.insert(visitor.flaws, neighbors.FLAW_TYPES.NOT_ON_TODAY_LIST)
         end
     else
         -- Legitimate Human Citizen dialogues

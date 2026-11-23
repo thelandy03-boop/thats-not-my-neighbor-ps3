@@ -22,7 +22,12 @@ local STATES = {
 local game = {
     running = true,
     state = STATES.TITLE,
+    game_mode = "STANDARD",
     show_controls_modal = false,
+    show_credits_modal = false,
+    manual_page = 1,
+    title_selected_idx = 1,
+    title_anim_tick = 0,
 
     -- Virtual Cursor
     cursor = {
@@ -69,11 +74,14 @@ local game = {
         response_text = ""
     },
 
-    -- Title Screen Buttons
-    title_buttons = {
-        start    = { x = 420, y = 370, w = 440, h = 55, label = "INICIAR TURNO DE SEGURIDAD" },
-        controls = { x = 420, y = 445, w = 440, h = 55, label = "MANUAL Y CONTROLES DUALSHOCK 3" },
-        exit     = { x = 420, y = 520, w = 440, h = 55, label = "SALIR AL XMB" }
+    -- Title Screen Menu Items (DualShock 3 D-Pad + Virtual Cursor)
+    title_menu = {
+        { id = "standard",   x = 360, y = 295, w = 560, h = 48, label = "INICIAR TURNO ESTANDAR (5 VECINOS)", desc = "Turno regular de guardia. Evalua y coteja cada inquilino cuidadosamente." },
+        { id = "extended",   x = 360, y = 350, w = 560, h = 48, label = "TURNO COMPLETO D.D.D. (10 VECINOS)", desc = "Jornada extendida con mayor afluencia y escrutinio riguroso del edificio." },
+        { id = "nightmare",  x = 360, y = 405, w = 560, h = 48, label = "MODO PESADILLA // NIGHTMARE SHIFT",  desc = "ALERTA MAXIMA: Infiltracion masiva de entes grotescos, mutaciones y sangre." },
+        { id = "manual",     x = 360, y = 460, w = 560, h = 48, label = "MANUAL Y PROTOCOLO D.D.D.",           desc = "Manual oficial con mapeo del mando DualShock 3 y directrices de purga." },
+        { id = "credits",    x = 360, y = 515, w = 560, h = 48, label = "EXPEDIENTES Y CREDITOS D.D.D.",        desc = "Creditos al autor original Nacho Sama y arquitectura nativa PS3 Demake." },
+        { id = "exit",       x = 360, y = 570, w = 560, h = 48, label = "SALIR AL MENU PRINCIPAL XMB",          desc = "Cierre seguro de sesion y regreso al sistema operativo CellOS." }
     },
 
     -- UI Hitboxes on Desk (X, Y, Width, Height)
@@ -157,7 +165,12 @@ function game_init()
     log_info("Starting That's Not My Neighbor PS3 Demake...")
     game.todays_list = neighbors.generate_todays_list()
     game.state = STATES.TITLE
+    game.game_mode = "STANDARD"
     game.show_controls_modal = false
+    game.show_credits_modal = false
+    game.manual_page = 1
+    game.title_selected_idx = 1
+    game.title_anim_tick = 0
     play_music("Music_Menu.ogg", true)
 
     reset_checklist()
@@ -177,15 +190,26 @@ local function spawn_next()
     end
 
     game.visitor_queue = game.visitor_queue - 1
-    local is_doppel = (math.random() > 0.5)
-    game.current_visitor = neighbors.spawn_visitor(is_doppel)
+    local is_nightmare = (game.game_mode == "NIGHTMARE")
+    local force_doppel = nil
+    if is_nightmare then
+        force_doppel = (math.random() > 0.2)
+    else
+        force_doppel = (math.random() > 0.5)
+    end
+
+    game.current_visitor = neighbors.spawn_visitor(force_doppel, is_nightmare)
     game.shutter_open = false
     game.state = STATES.WAIT_NEIGHBOR
     game.dialogue.text = ""
     game.dialogue.talking_timer = 0
     reset_checklist()
 
-    game.message_banner = "NUEVO INDIVIDUO EN LA PUERTA. ABRA LA VENTANILLA PARA EVALUAR."
+    if is_nightmare then
+        game.message_banner = "¡ALERTA ROJA! MODO PESADILLA ACTIVO: VERIFIQUE CADA ANOMALIA."
+    else
+        game.message_banner = "NUEVO INDIVIDUO EN LA PUERTA. ABRA LA VENTANILLA PARA EVALUAR."
+    end
     game.banner_timer = 240
     play_sfx("SFX_Window.wav")
 end
@@ -306,27 +330,102 @@ function game_update()
 
     -- 2. State-Specific Updates
     if game.state == STATES.TITLE then
+        game.title_anim_tick = game.title_anim_tick + 1
+
         if game.show_controls_modal then
-            if clicked or cancelled then
+            -- Manual modal: L1 / R1 or D-Pad Left / Right changes page
+            if l1_pressed or (pad.left and not game.pad_prev.left) then
+                game.manual_page = (game.manual_page - 2) % 3 + 1
+                play_sfx("SFX_Pick_Up_Folder.wav")
+            elseif r1_pressed or (pad.right and not game.pad_prev.right) then
+                game.manual_page = (game.manual_page % 3) + 1
+                play_sfx("SFX_Pick_Up_Folder.wav")
+            elseif clicked or cancelled then
                 game.show_controls_modal = false
                 play_sfx("SFX_Pick_Up_Folder.wav")
             end
+
+        elseif game.show_credits_modal then
+            -- Credits modal: Cross or Circle dismisses
+            if clicked or cancelled then
+                game.show_credits_modal = false
+                play_sfx("SFX_Pick_Up_Folder.wav")
+            end
+
         else
+            -- D-Pad UP / DOWN navigation
+            if pad.up and not game.pad_prev.up then
+                game.title_selected_idx = game.title_selected_idx - 1
+                if game.title_selected_idx < 1 then
+                    game.title_selected_idx = #game.title_menu
+                end
+                play_sfx("SFX_Select.wav")
+                local target = game.title_menu[game.title_selected_idx]
+                game.cursor.x = target.x + target.w / 2
+                game.cursor.y = target.y + target.h / 2
+            elseif pad.down and not game.pad_prev.down then
+                game.title_selected_idx = game.title_selected_idx + 1
+                if game.title_selected_idx > #game.title_menu then
+                    game.title_selected_idx = 1
+                end
+                play_sfx("SFX_Select.wav")
+                local target = game.title_menu[game.title_selected_idx]
+                game.cursor.x = target.x + target.w / 2
+                game.cursor.y = target.y + target.h / 2
+            end
+
+            -- Virtual cursor hovering detection
+            for i, btn in ipairs(game.title_menu) do
+                if point_in_rect(game.cursor.x, game.cursor.y, btn) then
+                    if game.title_selected_idx ~= i then
+                        game.title_selected_idx = i
+                        play_sfx("SFX_Select.wav")
+                    end
+                end
+            end
+
+            -- Action selection (Cross button)
             if clicked then
-                if point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.start) then
-                    play_sfx("SFX_Accept.wav")
-                    play_music("Music_Dark.ogg", true)
-                    game.visitor_queue = 5
-                    game.visitors_cleared = 0
-                    game.doppels_eliminated = 0
-                    game.innocents_killed = 0
-                    spawn_next()
-                elseif point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.controls) then
-                    play_sfx("SFX_Select.wav")
-                    game.show_controls_modal = true
-                elseif point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.exit) then
-                    play_sfx("SFX_Hang_Down_Phone.wav")
-                    exit_game()
+                local chosen = game.title_menu[game.title_selected_idx]
+                if chosen then
+                    if chosen.id == "standard" then
+                        play_sfx("SFX_Accept.wav")
+                        play_music("Music_Dark.ogg", true)
+                        game.game_mode = "STANDARD"
+                        game.visitor_queue = 5
+                        game.visitors_cleared = 0
+                        game.doppels_eliminated = 0
+                        game.innocents_killed = 0
+                        spawn_next()
+                    elseif chosen.id == "extended" then
+                        play_sfx("SFX_Accept.wav")
+                        play_music("Music_Dark.ogg", true)
+                        game.game_mode = "EXTENDED"
+                        game.visitor_queue = 10
+                        game.visitors_cleared = 0
+                        game.doppels_eliminated = 0
+                        game.innocents_killed = 0
+                        spawn_next()
+                    elseif chosen.id == "nightmare" then
+                        play_sfx("SFX_Bite.wav")
+                        play_music("Music_Dark.ogg", true)
+                        game.game_mode = "NIGHTMARE"
+                        game.visitor_queue = 8
+                        game.visitors_cleared = 0
+                        game.doppels_eliminated = 0
+                        game.innocents_killed = 0
+                        spawn_next()
+                    elseif chosen.id == "manual" then
+                        play_sfx("SFX_Pick_Up_Folder.wav")
+                        game.show_controls_modal = true
+                        game.manual_page = 1
+                    elseif chosen.id == "credits" then
+                        play_sfx("SFX_Pick_Up_Folder.wav")
+                        game.show_credits_modal = true
+                    elseif chosen.id == "exit" then
+                        play_sfx("SFX_Hang_Down_Phone.wav")
+                        exit_game()
+                    end
                 end
             end
         end
@@ -522,58 +621,205 @@ function game_update()
     game.pad_prev = pad
 end
 
--- Render Title Screen & Main Menu
-local function render_title_screen()
-    -- Atmosphere Dark Wall Base
-    draw_rect(0, 0, 1280, 720, 14, 12, 16, 255)
-    draw_sprite("Wall.png", 0, 0, 1280, 720)
-    draw_rect(0, 0, 1280, 720, 0, 0, 0, 170)
+-- Render Multi-Page Agent Handbook (Manual D.D.D.)
+local function render_manual_modal()
+    draw_rect(100, 45, 1080, 630, 10, 10, 15, 245)
+    draw_rect(120, 65, 1040, 590, 240, 235, 215, 255)
 
-    -- Official Banner & D.D.D. Logo
-    draw_sprite("DDD_logo.png", 530, 40, 220, 110)
-    draw_sprite("banner.png", 528, 160, 224, 172)
+    -- Header and D.D.D. Seal
+    draw_sprite("DDD_logo.png", 140, 80, 100, 50)
+    draw_text(260, 85, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS - MANUAL OFICIAL", 20, 20, 20, 255)
+    draw_text(260, 110, "DOCUMENTO CLASIFICADO DE USO EXCLUSIVO PARA AGENTES EN CABINA", 140, 30, 30, 255)
+    draw_rect(140, 140, 1000, 2, 70, 70, 70, 255)
 
-    -- Title Typography
-    draw_text(440, 165, "THAT'S NOT MY NEIGHBOR", 255, 230, 80, 255)
-    draw_text(500, 195, "DEMAKE PLAYSTATION 3", 220, 220, 220, 255)
-    draw_text(380, 225, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS", 200, 40, 40, 255)
+    -- Tab Headers
+    local tabs = {
+        { id = 1, x = 160, label = "[1] MANDOS DUALSHOCK 3" },
+        { id = 2, x = 480, label = "[2] PROTOCOLO DE SEGURIDAD" },
+        { id = 3, x = 800, label = "[3] CATALOGO DE ANOMALIAS" }
+    }
 
-    -- Interactive Buttons
-    for _, btn in pairs(game.title_buttons) do
-        local hovered = point_in_rect(game.cursor.x, game.cursor.y, btn)
-        if hovered then
-            draw_rect(btn.x - 4, btn.y - 4, btn.w + 8, btn.h + 8, 255, 220, 80, 255)
-            draw_rect(btn.x, btn.y, btn.w, btn.h, 60, 50, 40, 255)
-            draw_text(btn.x + 35, btn.y + 20, btn.label, 255, 240, 120, 255)
+    for _, tab in ipairs(tabs) do
+        if tab.id == game.manual_page then
+            draw_rect(tab.x, 155, 280, 34, 40, 80, 40, 255)
+            draw_text(tab.x + 20, 164, tab.label, 255, 255, 255, 255)
         else
-            draw_rect(btn.x, btn.y, btn.w, btn.h, 30, 25, 25, 230)
-            draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 20, 18, 18, 240)
-            draw_text(btn.x + 35, btn.y + 20, btn.label, 220, 220, 220, 255)
+            draw_rect(tab.x, 155, 280, 34, 180, 175, 160, 255)
+            draw_text(tab.x + 20, 164, tab.label, 60, 60, 60, 255)
         end
     end
 
-    -- Controls Modal Dialog
-    if game.show_controls_modal then
-        draw_rect(160, 80, 960, 560, 10, 10, 15, 250)
-        draw_rect(180, 100, 920, 520, 240, 235, 215, 255)
+    -- Tab 1: Mando DualShock 3
+    if game.manual_page == 1 then
+        draw_rect(160, 210, 960, 380, 250, 246, 230, 255)
+        draw_text(180, 230, "MAPEO Y DISTRIBUCION DEL CONTROLADOR PS3:", 20, 20, 20, 255)
 
-        draw_text(420, 130, "MANUAL DE PROCEDIMIENTOS D.D.D.", 20, 20, 20, 255)
-        draw_text(380, 160, "CONTROLES DUALSHOCK 3 DE LA CABINA", 50, 50, 50, 255)
-        draw_rect(220, 190, 840, 2, 80, 80, 80, 255)
+        draw_text(200, 270, "* STICK ANALOGICO IZQUIERDO / CRUCETA (D-PAD):", 40, 40, 40, 255)
+        draw_text(220, 295, "  Mueve el cursor virtual por el escritorio, documentos y ventanilla.", 80, 80, 80, 255)
 
-        draw_text(240, 220, "* STICK IZQUIERDO / D-PAD: Mover el cursor por el escritorio", 30, 30, 30, 255)
-        draw_text(240, 265, "* BOTON CRUZ (X):          Interactuar, abrir persiana, marcar y cotejar", 30, 30, 30, 255)
-        draw_text(240, 310, "* BOTON CIRCULO (O):       Cerrar documentos inspeccionados / Colgar telefono", 30, 30, 30, 255)
-        draw_text(240, 355, "* BOTONES L1 / R1:         Cambiar de piso en la Carpeta de Vecinos", 30, 30, 30, 255)
-        draw_text(240, 400, "* TELEFONO DE DISCO:       Marcar 3312 para D.D.D. o el numero del departamento", 30, 30, 30, 255)
-        draw_text(240, 445, "* ALARMA DE EMERGENCIA:    Levantar tapa protectora y pulsar boton rojo", 180, 20, 20, 255)
-        draw_text(240, 490, "* START + SELECT:          Salida limpia al menu principal XMB", 60, 60, 60, 255)
+        draw_text(200, 335, "* BOTON CRUZ (X):", 40, 40, 40, 255)
+        draw_text(220, 360, "  Interactuar con objetos, abrir/cerrar persiana, sellar documentos y marcar casillas.", 80, 80, 80, 255)
 
-        draw_rect(440, 550, 400, 40, 30, 30, 30, 230)
-        draw_text(465, 562, "PULSA (X) O (O) PARA CERRAR MANUAL", 255, 255, 255, 255)
+        draw_text(200, 400, "* BOTON CIRCULO (O):", 40, 40, 40, 255)
+        draw_text(220, 425, "  Cerrar cualquier documento o carpeta abierta; colgar el telefono de disco.", 80, 80, 80, 255)
+
+        draw_text(200, 465, "* BOTONES L1 / R1:", 40, 40, 40, 255)
+        draw_text(220, 490, "  Navegar entre pisos en la Carpeta del Edificio o cambiar de pagina en manuales.", 80, 80, 80, 255)
+
+        draw_text(200, 530, "* BOTON ROJO DE ALARMA:", 160, 30, 30, 255)
+        draw_text(220, 555, "  Levante la tapa de seguridad primero antes de presionar el boton de purga D.D.D.", 80, 80, 80, 255)
+
+    -- Tab 2: Protocolo Operativo D.D.D.
+    elseif game.manual_page == 2 then
+        draw_rect(160, 210, 960, 380, 250, 246, 230, 255)
+        draw_text(180, 230, "PROCEDIMIENTO ESTANDAR ANTE LA LLEGADA DE UN VECINO:", 20, 20, 20, 255)
+
+        draw_text(200, 270, "1. ACCIONAR PALANCA DE VENTANILLA:", 30, 30, 30, 255)
+        draw_text(220, 295, "   Reciba al vecino y observe atentamente sus expresiones faciales y atuendo.", 70, 70, 70, 255)
+
+        draw_text(200, 335, "2. SOLICITAR IDENTIFICACION Y PERMISO:", 30, 30, 30, 255)
+        draw_text(220, 360, "   Haga clic sobre el Carnet de Identidad y la Solicitud para abrirlos.", 70, 70, 70, 255)
+
+        draw_text(200, 400, "3. COTEJAR REGISTROS:", 30, 30, 30, 255)
+        draw_text(220, 425, "   Verifique que figure en la Lista de Hoy y que el Depto coincida con la Carpeta de Pisos.", 70, 70, 70, 255)
+
+        draw_text(200, 465, "4. REGISTRO EN HOJA DE COTEJO:", 30, 30, 30, 255)
+        draw_text(220, 490, "   Marque cada punto validado. Un cotejo completo garantiza un turno con calificacion S.", 70, 70, 70, 255)
+
+        draw_text(200, 530, "5. RESOLUCION FINAL:", 30, 30, 30, 255)
+        draw_text(220, 555, "   Si todo es correcto: Boton Verde. Si detecta impostor: Levante la tapa y active Alarma.", 150, 20, 20, 255)
+
+    -- Tab 3: Guía de Anomalías
+    elseif game.manual_page == 3 then
+        draw_rect(160, 210, 960, 380, 250, 246, 230, 255)
+        draw_text(180, 230, "CLASIFICACION DE ANOMALIAS DE DOPPELGANGERS:", 180, 20, 20, 255)
+
+        draw_text(200, 270, "* FALSIFICACIONES DOCUMENTALES:", 30, 30, 30, 255)
+        draw_text(220, 295, "  Numeros de ID con digitos faltantes, sellos DDD falsos o fechas de caducidad expiradas.", 70, 70, 70, 255)
+
+        draw_text(200, 335, "* ANOMALIAS FISICAS GROTESCAS:", 30, 30, 30, 255)
+        draw_text(220, 360, "  Tercer ojo, cara con espiral uzumaki, manchas de sangre, miembros duplicados u orejas mutadas.", 70, 70, 70, 255)
+
+        draw_text(200, 400, "* AUSENCIA EN LISTA OFICIAL:", 30, 30, 30, 255)
+        draw_text(220, 425, "  Nombres alterados que no aparecen en la lista de ingreso diario autorizada.", 70, 70, 70, 255)
+
+        draw_text(200, 465, "* LLAMADA DE VERIFICACION:", 30, 30, 30, 255)
+        draw_text(220, 490, "  Si marca al departamento y el residente original contesta, quien esta afuera es un Doppelgänger.", 160, 30, 30, 255)
+
+        draw_text(200, 530, "* PROTOCOLO DE PURGA 3312:", 30, 30, 30, 255)
+        draw_text(220, 555, "  La unidad DDD neutralizara inmediatamente a cualquier entidad anomala reportada.", 60, 60, 60, 255)
     end
 
-    draw_text(340, 680, "PSL1GHT v2  |  RSX 720p Tiny3D  |  Lua 5.4  |  D.D.D. 1955", 130, 130, 130, 255)
+    -- Footer
+    draw_rect(240, 605, 800, 36, 30, 30, 35, 230)
+    draw_text(290, 615, "L1 / R1: CAMBIAR PAGINA   |   PULSA (O) O (X) PARA CERRAR MANUAL", 255, 255, 255, 255)
+end
+
+-- Render Credits & Technical Demake Dossier
+local function render_credits_modal()
+    draw_rect(140, 60, 1000, 600, 10, 10, 15, 245)
+    draw_rect(160, 80, 960, 560, 240, 235, 215, 255)
+
+    -- Header and D.D.D. Seal
+    draw_sprite("DDD_logo.png", 540, 95, 200, 90)
+    draw_text(410, 200, "THAT'S NOT MY NEIGHBOR", 20, 20, 20, 255)
+    draw_text(370, 225, "EXPEDIENTE HISTORICO Y CREDITOS DEL DEMAKE", 160, 30, 30, 255)
+    draw_rect(200, 255, 880, 2, 80, 80, 80, 255)
+
+    -- Original Game Credits
+    draw_text(220, 280, "JUEGO ORIGINAL:", 20, 20, 20, 255)
+    draw_text(240, 305, "* Creado, programado y disenado por: Nacho Sama", 40, 40, 40, 255)
+    draw_text(240, 330, "* Todos los derechos de arte, personajes, musica y universo pertenecen a Nacho Sama.", 70, 70, 70, 255)
+
+    -- PS3 Demake Credits
+    draw_text(220, 375, "PLAYSTATION 3 HOMEBREW DEMAKE:", 20, 20, 20, 255)
+    draw_text(240, 400, "* Arquitectura: PSL1GHT v2 ANSI C nativo para PPU (Cell OS)", 40, 40, 40, 255)
+    draw_text(240, 425, "* Motor Grafico: RSX 720p Tiny3D con mapeo estatico VRAM (256MB GDDR3)", 40, 40, 40, 255)
+    draw_text(240, 450, "* Motor de Script: Vanilla Lua 5.4.6 embebido (sin JIT por seguridad W^X)", 40, 40, 40, 255)
+    draw_text(240, 475, "* Sin dependencias de motores pesados: 100% optimizado para hardware de PS3", 40, 40, 40, 255)
+
+    -- Dedication
+    draw_text(220, 520, "DEDICATORIA:", 20, 20, 20, 255)
+    draw_text(240, 545, "A la comunidad homebrew y de preservacion de consolas de septima generacion.", 70, 70, 70, 255)
+
+    -- Footer
+    draw_rect(340, 585, 600, 36, 30, 30, 35, 230)
+    draw_text(430, 595, "PULSA (O) O (X) PARA CERRAR EXPEDIENTE", 255, 255, 255, 255)
+end
+
+-- Render Title Screen & Main Menu
+local function render_title_screen()
+    -- Atmosphere Dark Wall Base
+    draw_rect(0, 0, 1280, 720, 10, 8, 14, 255)
+    draw_sprite("Wall.png", 0, 0, 1280, 720)
+    draw_rect(0, 0, 1280, 720, 0, 0, 0, 185)
+
+    -- Subtle CRT Scanlines
+    local scan_y = (game.title_anim_tick * 2.5) % 720
+    draw_rect(0, scan_y, 1280, 3, 255, 255, 255, 16)
+
+    -- Lurking Doppelgänger hands swaying at bottom corners
+    local sway = math.sin(game.title_anim_tick * 0.05) * 6
+    draw_sprite("Doppel_Left_Hand.png", 20, 440 + sway, 200, 270)
+    draw_sprite("Doppel_Right_Hand.png", 1060, 440 - sway, 200, 270)
+
+    -- Official Banner & D.D.D. Logo Frame
+    draw_rect(350, 15, 580, 260, 15, 15, 20, 215)
+    draw_rect(350, 15, 580, 2, 70, 60, 40, 255)
+    draw_rect(350, 273, 580, 2, 70, 60, 40, 255)
+
+    draw_sprite("DDD_logo.png", 540, 22, 200, 95)
+    draw_sprite("banner.png", 490, 115, 300, 120)
+
+    -- Title Typography
+    draw_text(420, 238, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS", 220, 50, 50, 255)
+    draw_text(475, 256, "[ EXPEDIENTE DE SEGURIDAD 1955-D ]", 255, 220, 100, 255)
+
+    -- Interactive Buttons
+    for i, btn in ipairs(game.title_menu) do
+        local is_selected = (i == game.title_selected_idx)
+        local is_nightmare_btn = (btn.id == "nightmare")
+
+        if is_selected then
+            if is_nightmare_btn then
+                draw_rect(btn.x - 4, btn.y - 4, btn.w + 8, btn.h + 8, 255, 40, 40, 255)
+                draw_rect(btn.x, btn.y, btn.w, btn.h, 70, 20, 20, 255)
+                draw_text(btn.x + 25, btn.y + 16, "> " .. btn.label, 255, 200, 200, 255)
+            else
+                draw_rect(btn.x - 4, btn.y - 4, btn.w + 8, btn.h + 8, 255, 215, 75, 255)
+                draw_rect(btn.x, btn.y, btn.w, btn.h, 55, 45, 35, 255)
+                draw_text(btn.x + 25, btn.y + 16, "> " .. btn.label, 255, 240, 120, 255)
+            end
+        else
+            if is_nightmare_btn then
+                draw_rect(btn.x, btn.y, btn.w, btn.h, 40, 15, 15, 230)
+                draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 30, 10, 10, 240)
+                draw_text(btn.x + 25, btn.y + 16, "  " .. btn.label, 200, 100, 100, 255)
+            else
+                draw_rect(btn.x, btn.y, btn.w, btn.h, 30, 26, 26, 230)
+                draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 20, 18, 18, 240)
+                draw_text(btn.x + 25, btn.y + 16, "  " .. btn.label, 220, 220, 220, 255)
+            end
+        end
+    end
+
+    -- Description Banner for Selected Button
+    local active_btn = game.title_menu[game.title_selected_idx]
+    if active_btn and active_btn.desc then
+        draw_rect(320, 630, 640, 32, 12, 12, 16, 230)
+        draw_rect(320, 630, 640, 1, 70, 70, 80, 255)
+        draw_text(340, 638, active_btn.desc, 255, 240, 160, 255)
+    end
+
+    -- Bottom Controls Bar
+    draw_text(260, 680, "[ D-PAD / STICK: NAVEGAR ]   [ X: CONFIRMAR ]   [ O: CANCELAR ]   [ CELL/RSX 720p 60FPS ]", 150, 150, 150, 255)
+
+    -- Render Modals on Top if Open
+    if game.show_controls_modal then
+        render_manual_modal()
+    elseif game.show_credits_modal then
+        render_credits_modal()
+    end
 end
 
 -- Render Security Booth Background & Elements
@@ -586,7 +832,7 @@ local function render_booth()
         local tx = 520
         local ty = 140
 
-        -- Render Character Components
+        -- Character Body
         if vis.template.body_asset then
             if vis.physical_blood then
                 draw_sprite("Char_Francis_Body_Blood.png", tx, ty + 120, 240, 260)
@@ -594,14 +840,50 @@ local function render_booth()
                 draw_sprite(vis.template.body_asset, tx, ty + 120, 240, 260)
             end
         end
-        if vis.template.head_asset then
-            draw_sprite(vis.template.head_asset, tx + 20, ty, 200, 190)
+
+        -- Extra arms for Roman doppelgänger
+        if vis.physical_extra_arms then
+            draw_sprite("Char_Roman_Doppel_Extra_Arms.png", tx - 30, ty + 100, 300, 260)
         end
-        if vis.template.eyes_asset then
+
+        -- Character Head
+        if vis.template.head_asset then
+            if vis.physical_blood and vis.template.key == "FRANCIS_MOSSES" then
+                draw_sprite("Char_Francis_Head_Blood.png", tx + 20, ty, 200, 190)
+            else
+                draw_sprite(vis.template.head_asset, tx + 20, ty, 200, 190)
+            end
+        end
+
+        -- Ears for Francis (when doppelgänger)
+        if vis.flaws_has_ears then
+            draw_sprite("Char_Francis_Ears_Doppel.png", tx + 10, ty + 40, 220, 70)
+        end
+
+        -- Eyebrows
+        if vis.flaws_has_eyebrows then
+            draw_sprite("Char_Francis_Eyebrows_Doppel.png", tx + 35, ty + 40, 170, 30)
+        elseif vis.template.eyebrows_asset then
+            draw_sprite(vis.template.eyebrows_asset, tx + 35, ty + 40, 170, 30)
+        end
+
+        -- Eyes
+        if vis.flaws_has_eyes then
+            draw_sprite("Char_Francis_Eyes_Doppel.png", tx + 40, ty + 50, 160, 40)
+        elseif vis.template.eyes_asset then
             draw_sprite(vis.template.eyes_asset, tx + 40, ty + 50, 160, 40)
         end
-        if vis.template.nose_asset then
+
+        -- Nose
+        if vis.flaws_has_nose then
+            draw_sprite("Char_Francis_Nose_Doppel.png", tx + 70, ty + 65, 60, 65)
+        elseif vis.template.nose_asset then
             draw_sprite(vis.template.nose_asset, tx + 70, ty + 70, 60, 60)
+        end
+
+        -- Scar (Roman)
+        if vis.template.scar_asset then
+            draw_sprite(vis.template.scar_asset, tx + 70, ty + 115, 45, 30)
         end
 
         -- Animated Mouth Flap Sync
@@ -617,11 +899,16 @@ local function render_booth()
             draw_sprite(mouth_sprite, tx + 60, ty + 130, 80, 40)
         end
 
+        -- Hat
         if vis.template.hat_asset then
-            draw_sprite(vis.template.hat_asset, tx + 10, ty - 50, 220, 110)
+            if vis.physical_blood and vis.template.key == "FRANCIS_MOSSES" then
+                draw_sprite("Char_Francis_Hat_Blood.png", tx + 10, ty - 50, 220, 110)
+            else
+                draw_sprite(vis.template.hat_asset, tx + 10, ty - 50, 220, 110)
+            end
         end
 
-        -- Anomalous physical features
+        -- Anomalous physical features (Roman)
         if vis.physical_extra_eye then
             draw_sprite("Char_Roman_Doppel_3rd_eye.png", tx + 75, ty + 20, 50, 40)
         end
@@ -705,8 +992,9 @@ local function render_doc_inspection()
 
     -- Draw ID Card Inspection
     draw_sprite("ID.png", 160, 120, 460, 320)
-    if vis.template.photo_asset then
-        draw_sprite(vis.template.photo_asset, 190, 170, 130, 160)
+    local photo_to_draw = vis.photo_asset or vis.template.photo_asset
+    if photo_to_draw then
+        draw_sprite(photo_to_draw, 190, 170, 130, 160)
     end
 
     draw_text(340, 180, "NOMBRE: " .. vis.name, 20, 20, 20, 255)
