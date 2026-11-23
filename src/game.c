@@ -87,6 +87,7 @@ void game_init(GameContext* ctx) {
     ctx->tab_btn_check = (DeskButton){ (Rect2D){ 1000, 60, 220, 50 }, false, false, "[R1] COTEJO D.D.D." };
 
     // Phone dial rotary buttons (numbers 1 to 9 in circle + 0)
+    static const char* s_digit_labels[10] = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
     const float cx = 960.0f;
     const float cy = 560.0f;
     const float r = 180.0f;
@@ -94,12 +95,10 @@ void game_init(GameContext* ctx) {
         float angle = ((float)(d - 1) * 32.0f + 40.0f) * (3.14159f / 180.0f);
         int bx = (int)(cx + cosf(angle) * r) - 30;
         int by = (int)(cy + sinf(angle) * r) - 30;
-        char num_str[4];
-        snprintf(num_str, sizeof(num_str), "%d", d);
-        ctx->phone.dial_buttons[d] = (DeskButton){ (Rect2D){ bx, by, 60, 60 }, false, false, strdup(num_str) };
+        ctx->phone.dial_buttons[d] = (DeskButton){ (Rect2D){ bx, by, 60, 60 }, false, false, s_digit_labels[d] };
     }
     // Digit 0 at bottom
-    ctx->phone.dial_buttons[0] = (DeskButton){ (Rect2D){ (int)cx - 30, (int)cy + 180, 60, 60 }, false, false, "0" };
+    ctx->phone.dial_buttons[0] = (DeskButton){ (Rect2D){ (int)cx - 30, (int)cy + 180, 60, 60 }, false, false, s_digit_labels[0] };
     ctx->phone.btn_hangup = (DeskButton){ (Rect2D){ 860, 840, 200, 60 }, false, false, "COLGAR [O]" };
     snprintf(ctx->phone.status_message, sizeof(ctx->phone.status_message), "Levanta el auricular y marca 4 digitos");
 
@@ -120,11 +119,11 @@ void game_spawn_next_visitor(GameContext* ctx) {
     memset(&ctx->checklist, 0, sizeof(VerificationChecklist));
 
     const NeighborData* base = &g_neighbors[ctx->visitor_index];
-    strncpy(ctx->visitor_docs.displayed_name, base->name, sizeof(ctx->visitor_docs.displayed_name));
-    strncpy(ctx->visitor_docs.displayed_last_name, base->last_name, sizeof(ctx->visitor_docs.displayed_last_name));
-    strncpy(ctx->visitor_docs.displayed_id_number, base->id_number, sizeof(ctx->visitor_docs.displayed_id_number));
-    strncpy(ctx->visitor_docs.displayed_expiration, base->id_expiration, sizeof(ctx->visitor_docs.displayed_expiration));
-    strncpy(ctx->visitor_docs.displayed_apartment, base->apt_number_es, sizeof(ctx->visitor_docs.displayed_apartment));
+    snprintf(ctx->visitor_docs.displayed_name, sizeof(ctx->visitor_docs.displayed_name), "%s", base->name);
+    snprintf(ctx->visitor_docs.displayed_last_name, sizeof(ctx->visitor_docs.displayed_last_name), "%s", base->last_name);
+    snprintf(ctx->visitor_docs.displayed_id_number, sizeof(ctx->visitor_docs.displayed_id_number), "%s", base->id_number);
+    snprintf(ctx->visitor_docs.displayed_expiration, sizeof(ctx->visitor_docs.displayed_expiration), "%s", base->id_expiration);
+    snprintf(ctx->visitor_docs.displayed_apartment, sizeof(ctx->visitor_docs.displayed_apartment), "%s", base->apt_number_es);
     ctx->visitor_docs.is_on_today_list = true;
     ctx->visitor_docs.has_doppelganger_flaw = ctx->visitor_is_doppelganger;
 
@@ -132,10 +131,10 @@ void game_spawn_next_visitor(GameContext* ctx) {
         ctx->visitor_docs.flaw_type = (ctx->processed_count % 4) + 1;
         switch (ctx->visitor_docs.flaw_type) {
             case 1:
-                strncpy(ctx->visitor_docs.displayed_expiration, "05/1952", sizeof(ctx->visitor_docs.displayed_expiration));
+                snprintf(ctx->visitor_docs.displayed_expiration, sizeof(ctx->visitor_docs.displayed_expiration), "05/1952");
                 break;
             case 2:
-                strncpy(ctx->visitor_docs.displayed_apartment, "P04-09", sizeof(ctx->visitor_docs.displayed_apartment));
+                snprintf(ctx->visitor_docs.displayed_apartment, sizeof(ctx->visitor_docs.displayed_apartment), "P04-09");
                 break;
             case 3:
                 ctx->visitor_docs.displayed_id_number[3] = '9';
