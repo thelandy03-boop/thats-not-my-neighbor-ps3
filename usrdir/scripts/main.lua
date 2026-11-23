@@ -86,24 +86,24 @@ local game = {
 
     -- UI Hitboxes on Desk (X, Y, Width, Height)
     hitboxes = {
-        shutter_toggle = { x = 60,   y = 480, w = 110, h = 90  },
-        door_unlock    = { x = 60,   y = 590, w = 110, h = 50  },
-        door_lock      = { x = 60,   y = 650, w = 110, h = 50  },
-        phone_desk     = { x = 190,  y = 500, w = 130, h = 180 },
-        alarm_cover    = { x = 340,  y = 520, w = 65,  h = 50  },
-        alarm_button   = { x = 340,  y = 580, w = 65,  h = 70  },
-        desk_id        = { x = 440,  y = 550, w = 110, h = 80  },
-        desk_request   = { x = 560,  y = 540, w = 110, h = 90  },
-        desk_list      = { x = 680,  y = 530, w = 110, h = 100 },
-        desk_floors    = { x = 800,  y = 520, w = 130, h = 110 },
-        desk_checklist = { x = 940,  y = 520, w = 120, h = 110 }
+        shutter_toggle = { x = 320,  y = 220, w = 65,  h = 95  },
+        door_unlock    = { x = 52,   y = 495, w = 106, h = 68  },
+        door_lock      = { x = 52,   y = 580, w = 106, h = 68  },
+        phone_desk     = { x = 180,  y = 480, w = 135, h = 190 },
+        alarm_cover    = { x = 340,  y = 535, w = 65,  h = 130 },
+        alarm_button   = { x = 345,  y = 550, w = 55,  h = 100 },
+        desk_id        = { x = 440,  y = 485, w = 125, h = 80  },
+        desk_request   = { x = 580,  y = 475, w = 115, h = 95  },
+        desk_list      = { x = 730,  y = 475, w = 140, h = 190 },
+        desk_floors    = { x = 895,  y = 465, w = 160, h = 205 },
+        desk_checklist = { x = 1080, y = 470, w = 160, h = 200 }
     },
 
-    -- Interrogation Question Buttons (available when window is open)
+    -- Interrogation Question Buttons (available when window is open on left frame)
     interrogate_buttons = {
-        reason = { x = 160, y = 140, w = 240, h = 45, label = "[?] MOTIVO DE VISITA" },
-        id     = { x = 160, y = 200, w = 240, h = 45, label = "[?] CUESTIONAR ID" },
-        list   = { x = 160, y = 260, w = 240, h = 45, label = "[?] CUESTIONAR LISTA" }
+        reason = { x = 180, y = 140, w = 210, h = 42, label = "[?] MOTIVO VISITA" },
+        id     = { x = 180, y = 195, w = 210, h = 42, label = "[?] CUESTIONAR ID" },
+        list   = { x = 180, y = 250, w = 210, h = 42, label = "[?] NO EN LISTA" }
     },
 
     -- Directory Floor Tabs
@@ -291,16 +291,23 @@ end
 function game_update()
     local pad = get_pad_input()
 
-    -- 1. Virtual Cursor Movement (Mouse or Left Analog Stick)
+    -- 1. Virtual Cursor Movement (Mouse or Left Analog Stick with 15% Deadzone)
     if pad.mouse_moved and pad.mouse_x and pad.mouse_y then
         game.cursor.x = pad.mouse_x
         game.cursor.y = pad.mouse_y
     else
-        if math.abs(pad.analog_lx) > 0.05 then
-            game.cursor.x = game.cursor.x + (pad.analog_lx * game.cursor.speed)
+        local DEADZONE = 0.15
+        local lx = pad.analog_lx or 0.0
+        local ly = pad.analog_ly or 0.0
+        if math.abs(lx) > DEADZONE then
+            local mag = (math.abs(lx) - DEADZONE) / (1.0 - DEADZONE)
+            local sign = lx > 0 and 1 or -1
+            game.cursor.x = game.cursor.x + (sign * mag * game.cursor.speed)
         end
-        if math.abs(pad.analog_ly) > 0.05 then
-            game.cursor.y = game.cursor.y + (pad.analog_ly * game.cursor.speed)
+        if math.abs(ly) > DEADZONE then
+            local mag = (math.abs(ly) - DEADZONE) / (1.0 - DEADZONE)
+            local sign = ly > 0 and 1 or -1
+            game.cursor.y = game.cursor.y + (sign * mag * game.cursor.speed)
         end
     end
 
@@ -457,12 +464,14 @@ function game_update()
         end
 
     elseif game.state == STATES.INSPECT_DOC or game.state == STATES.INSPECT_LIST then
-        if cancelled or clicked then
+        local modal_rect = { x = 90, y = 40, w = 1100, h = 640 }
+        if cancelled or (clicked and not point_in_rect(game.cursor.x, game.cursor.y, modal_rect)) then
             play_sfx("SFX_Pick_Up_Folder.wav")
-            game.state = STATES.EXAMINE
+            game.state = game.shutter_open and STATES.EXAMINE or STATES.WAIT_NEIGHBOR
         end
 
     elseif game.state == STATES.INSPECT_FLOORS then
+        local modal_rect = { x = 100, y = 40, w = 1080, h = 640 }
         if l1_pressed then
             game.current_floor = math.max(1, game.current_floor - 1)
             play_sfx("SFX_Pick_Up_Folder.wav")
@@ -471,9 +480,9 @@ function game_update()
             play_sfx("SFX_Pick_Up_Folder.wav")
         end
 
-        if cancelled then
+        if cancelled or (clicked and not point_in_rect(game.cursor.x, game.cursor.y, modal_rect)) then
             play_sfx("SFX_Pick_Up_Folder.wav")
-            game.state = STATES.EXAMINE
+            game.state = game.shutter_open and STATES.EXAMINE or STATES.WAIT_NEIGHBOR
         elseif clicked then
             for _, tab in ipairs(game.floor_tabs) do
                 if point_in_rect(game.cursor.x, game.cursor.y, tab) then
@@ -485,9 +494,10 @@ function game_update()
         end
 
     elseif game.state == STATES.INSPECT_CHECKLIST then
-        if cancelled then
+        local modal_rect = { x = 140, y = 40, w = 1000, h = 640 }
+        if cancelled or (clicked and not point_in_rect(game.cursor.x, game.cursor.y, modal_rect)) then
             play_sfx("SFX_Pick_Up_Folder.wav")
-            game.state = STATES.EXAMINE
+            game.state = game.shutter_open and STATES.EXAMINE or STATES.WAIT_NEIGHBOR
         elseif clicked then
             for i = 1, #game.checklist do
                 local row_rect = { x = 200, y = 140 + (i * 65), w = 880, h = 50 }
@@ -500,12 +510,13 @@ function game_update()
         end
 
     elseif game.state == STATES.PHONE_CALL then
-        if cancelled then
+        local phone_rect = { x = 300, y = 50, w = 680, h = 620 }
+        if cancelled or (clicked and not point_in_rect(game.cursor.x, game.cursor.y, phone_rect)) then
             play_sfx("SFX_Hang_Down_Phone.wav")
-            game.state = STATES.EXAMINE
-        end
-
-        if clicked then
+            game.phone.dialed = ""
+            game.phone.response_text = ""
+            game.state = game.shutter_open and STATES.EXAMINE or STATES.WAIT_NEIGHBOR
+        elseif clicked then
             for _, btn in pairs(game.phone_dial_buttons) do
                 if point_in_rect(game.cursor.x, game.cursor.y, btn) then
                     if btn.digit then
@@ -521,7 +532,7 @@ function game_update()
                         play_sfx("SFX_Hang_Down_Phone.wav")
                         game.phone.dialed = ""
                         game.phone.response_text = ""
-                        game.state = STATES.EXAMINE
+                        game.state = game.shutter_open and STATES.EXAMINE or STATES.WAIT_NEIGHBOR
                     end
                 end
             end
@@ -530,7 +541,7 @@ function game_update()
     else
         -- Active security desk interaction
         if clicked then
-            -- Interrogation Options (When window is open)
+            -- Interrogation Options (When window is open on left frame)
             if game.shutter_open and game.current_visitor and game.current_visitor.dialogues then
                 if point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.reason) then
                     trigger_speech(game.current_visitor.dialogues.reason)
@@ -541,13 +552,13 @@ function game_update()
                 end
             end
 
-            -- Toggle Shutter
+            -- Toggle Shutter via Lever
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.shutter_toggle) then
                 game.shutter_open = not game.shutter_open
                 play_sfx("SFX_Window.wav")
                 if game.shutter_open then
                     game.state = STATES.EXAMINE
-                    game.message_banner = "VENTANILLA ABIERTA. OBSERVE ATENTAMENTE EL ROSTRO Y DOCUMENTOS."
+                    game.message_banner = "VENTANILLA ABIERTA. REVISE ROSTRO Y DOCUMENTOS EN MOSTRADOR."
                     if game.current_visitor and game.current_visitor.dialogues then
                         trigger_speech(game.current_visitor.dialogues.greeting)
                     end
@@ -570,31 +581,31 @@ function game_update()
                 spawn_next()
             end
 
-            -- Inspect ID Card
-            if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_id) then
+            -- Inspect ID Card (Delivered to counter when shutter is open)
+            if game.shutter_open and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_id) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_DOC
             end
 
-            -- Inspect Entry Request
-            if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_request) then
+            -- Inspect Entry Request (Delivered to counter when shutter is open)
+            if game.shutter_open and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_request) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_DOC
             end
 
-            -- Inspect Today's List
+            -- Inspect Today's List (Resting on right desk tray)
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_list) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_LIST
             end
 
-            -- Inspect Floors Directory (Carpeta de Pisos)
+            -- Inspect Floors Directory Binder (Resting on right desk)
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_floors) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_FLOORS
             end
 
-            -- Inspect Verification Checklist (Hoja de Cotejo)
+            -- Inspect Verification Checklist (Resting on right desk)
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_checklist) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_CHECKLIST
@@ -609,13 +620,13 @@ function game_update()
                 game.state = STATES.PHONE_CALL
             end
 
-            -- Alarm Cover Toggle
+            -- Alarm Cover Toggle (Safety Flap)
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.alarm_cover) then
                 game.alarm_cover_open = not game.alarm_cover_open
                 play_sfx("SFX_Select.wav")
             end
 
-            -- Alarm Red Button
+            -- Alarm Red Button (When Cover is Open)
             if game.alarm_cover_open and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.alarm_button) then
                 trigger_alarm()
             end
@@ -938,53 +949,57 @@ local function render_booth()
     -- Booth Wall, Hatch frame, and Window
     draw_sprite("Wall.png", 0, 0, 1280, 720)
     if not game.shutter_open then
-        draw_sprite("Panic_window.png", 420, 90, 440, 390)
+        draw_sprite("Panic_window.png", 420, 85, 440, 390)
     end
 
-    -- Door Control Panel on Desk
-    draw_sprite("Door_control.png", 40, 460, 150, 250)
-    draw_sprite("Door_button_unlock.png", 60, 590, 110, 50)
-    draw_sprite("Door_button_lock.png", 60, 650, 110, 50)
-
-    -- Rotary Phone on Desk
-    draw_sprite("Phone_base.png", 190, 500, 130, 180)
-
-    -- Emergency Alarm Box
-    draw_rect(335, 510, 75, 150, 80, 20, 20, 255)
-    draw_text(340, 515, "DDD ALARM", 255, 255, 255, 255)
-    if game.alarm_cover_open then
-        draw_rect(340, 580, 65, 70, 220, 30, 30, 255)
-        draw_text(350, 605, "PULSAR", 255, 255, 255, 255)
-    else
-        draw_rect(340, 520, 65, 130, 180, 180, 50, 200)
-        draw_text(345, 570, "TAPA SEG", 0, 0, 0, 255)
-    end
-
-    -- Documents on Desk
-    if game.current_visitor then
-        draw_sprite("ID.png", 440, 550, 110, 80)
-        draw_sprite("Paper.png", 560, 540, 110, 90)
-    end
-    draw_sprite("Todays_list.png", 680, 530, 110, 100)
-
-    -- Carpetas y Documentos en el Escritorio
-    draw_sprite("Folder_floors.png", 800, 520, 130, 110)
-    draw_text(810, 615, "CARPETA PISOS", 255, 255, 255, 255)
-
-    draw_sprite("Papers.png", 940, 520, 120, 110)
-    draw_text(950, 615, "CHECKLIST D.D.D.", 255, 255, 255, 255)
-
-    -- DDD Logo Watermark
-    draw_sprite("DDD_logo.png", 1120, 20, 130, 130)
-
-    -- Shutter Lever Status
+    -- Shutter Control Switch / Lever (Mounted diegetically on left window frame)
+    draw_sprite("Entry_request_button.png", 320, 220, 65, 95)
     if game.shutter_open then
-        draw_rect(65, 490, 100, 30, 50, 200, 50, 255)
-        draw_text(75, 498, "VENTANILLA ABIERTA", 0, 0, 0, 255)
+        draw_rect(348, 230, 9, 9, 50, 220, 50, 255) -- Green status LED
     else
-        draw_rect(65, 490, 100, 30, 200, 50, 50, 255)
-        draw_text(75, 498, "VENTANILLA CERRADA", 255, 255, 255, 255)
+        draw_rect(348, 230, 9, 9, 220, 50, 50, 255) -- Red status LED
     end
+
+    -- Door Control Console on Left Desk (Integrated unlock/lock buttons)
+    draw_sprite("Door_control.png", 40, 460, 130, 230)
+    draw_sprite("Door_button_unlock.png", 52, 495, 106, 68)
+    draw_sprite("Door_button_lock.png", 52, 580, 106, 68)
+
+    -- Rotary Phone on Lower-Left Desk
+    draw_sprite("Phone_base.png", 180, 480, 135, 190)
+    draw_sprite("Phone_top.png", 182, 475, 130, 70)
+
+    -- D.D.D. Emergency Alarm Box (Integrated Console, ZERO debug text)
+    draw_rect(335, 530, 75, 140, 45, 42, 42, 255)
+    draw_rect(339, 534, 67, 132, 20, 18, 18, 255)
+
+    if game.alarm_cover_open then
+        -- Open safety flap resting upwards
+        draw_rect(340, 500, 65, 30, 210, 175, 30, 255)
+        -- Exposed Red Plunger Button
+        draw_rect(345, 550, 55, 100, 220, 30, 30, 255)
+        draw_rect(348, 553, 49, 94, 255, 60, 60, 255)
+    else
+        -- Closed Hazard Yellow Safety Flap with Black Diagonal Accent Bands
+        draw_rect(340, 535, 65, 130, 210, 175, 30, 255)
+        draw_rect(340, 555, 65, 14, 20, 20, 20, 255)
+        draw_rect(340, 595, 65, 14, 20, 20, 20, 255)
+        draw_rect(340, 635, 65, 14, 20, 20, 20, 255)
+    end
+
+    -- Visitor Documents (Delivered through the hatch slot onto center-left counter ONLY when open)
+    if game.shutter_open and game.current_visitor then
+        draw_sprite("ID.png", 440, 485, 125, 80)
+        draw_sprite("Paper.png", 580, 475, 115, 95)
+    end
+
+    -- Reference Documents on Right Desk (Resting naturally, ZERO debug text labels)
+    draw_sprite("Todays_list.png", 730, 475, 140, 190)
+    draw_sprite("Folder_floors.png", 895, 465, 160, 205)
+    draw_sprite("Papers.png", 1080, 470, 160, 200)
+
+    -- DDD Security Plaque on Upper Wall
+    draw_sprite("DDD_logo.png", 1120, 25, 130, 65)
 end
 
 -- Render Document Inspection Overlay
@@ -1198,6 +1213,48 @@ local function render_victory_screen()
     draw_text(430, 575, "PULSA (X) PARA VOLVER AL MENU PRINCIPAL", 255, 255, 0, 255)
 end
 
+-- Helper to detect if cursor is hovering over an interactive object
+local function is_cursor_interactive()
+    local cx, cy = game.cursor.x, game.cursor.y
+    if game.state == STATES.TITLE then
+        if game.show_controls_modal or game.show_credits_modal then return true end
+        for _, btn in ipairs(game.title_menu) do
+            if point_in_rect(cx, cy, btn) then return true end
+        end
+        return false
+    end
+
+    if game.state == STATES.WAIT_NEIGHBOR or game.state == STATES.EXAMINE then
+        if point_in_rect(cx, cy, game.hitboxes.shutter_toggle) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.door_unlock) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.door_lock) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.phone_desk) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.alarm_cover) then return true end
+        if game.alarm_cover_open and point_in_rect(cx, cy, game.hitboxes.alarm_button) then return true end
+
+        if game.shutter_open and game.current_visitor then
+            if point_in_rect(cx, cy, game.hitboxes.desk_id) then return true end
+            if point_in_rect(cx, cy, game.hitboxes.desk_request) then return true end
+            for _, btn in pairs(game.interrogate_buttons) do
+                if point_in_rect(cx, cy, btn) then return true end
+            end
+        end
+
+        if point_in_rect(cx, cy, game.hitboxes.desk_list) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.desk_floors) then return true end
+        if point_in_rect(cx, cy, game.hitboxes.desk_checklist) then return true end
+    elseif game.state == STATES.PHONE_CALL then
+        for _, btn in pairs(game.phone_dial_buttons) do
+            if point_in_rect(cx, cy, btn) then return true end
+        end
+    elseif game.state == STATES.INSPECT_FLOORS then
+        for _, tab in ipairs(game.floor_tabs) do
+            if point_in_rect(cx, cy, tab) then return true end
+        end
+    end
+    return false
+end
+
 -- Main Render Loop (called every frame from C)
 function game_render()
     if game.state == STATES.TITLE then
@@ -1232,8 +1289,14 @@ function game_render()
         end
     end
 
-    -- Always Render Virtual Cursor on top
-    draw_sprite("Cursor.png", game.cursor.x - 16, game.cursor.y - 16, 32, 32)
+    -- Discrete Virtual Cursor (Hotspot at pointer tip)
+    local hovering = is_cursor_interactive()
+    if hovering then
+        draw_rect(game.cursor.x - 2, game.cursor.y - 2, 7, 7, 255, 220, 80, 220)
+        draw_sprite("Cursor.png", game.cursor.x - 2, game.cursor.y - 2, 34, 34)
+    else
+        draw_sprite("Cursor.png", game.cursor.x - 2, game.cursor.y - 2, 28, 28)
+    end
 end
 
 function game_shutdown()
