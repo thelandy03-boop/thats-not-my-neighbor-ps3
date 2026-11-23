@@ -383,10 +383,15 @@ void game_render(GameContext* ctx) {
             int cam_dx = (int)(ctx->camera.position.x - CAMERA_CENTER_X);
             int cam_dy = (int)(ctx->camera.position.y - CAMERA_CENTER_Y);
 
-            if (ctx->tex_background) graphics_draw_texture(ctx->tex_background, -cam_dx, -cam_dy);
-            else graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF2d2822);
+            if (ctx->tex_background) {
+                graphics_draw_texture_scaled(ctx->tex_background, -cam_dx - 50, -cam_dy - 30, SCREEN_WIDTH + 100, SCREEN_HEIGHT + 60);
+            } else {
+                graphics_draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0xFF2d2822);
+            }
 
-            if (ctx->tex_wall) graphics_draw_texture(ctx->tex_wall, -cam_dx, -cam_dy);
+            if (ctx->tex_wall) {
+                graphics_draw_texture_scaled(ctx->tex_wall, -cam_dx - 50, -cam_dy - 30, SCREEN_WIDTH + 100, SCREEN_HEIGHT + 60);
+            }
 
             int win_x = 480 - cam_dx;
             int win_y = 120 - cam_dy;

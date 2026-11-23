@@ -43,13 +43,20 @@ void input_poll(void) {
                 s_pad_state.start    = (data.button[2] & (1 << 3)) != 0;
                 s_pad_state.select   = (data.button[2] & (1 << 0)) != 0;
 
-                s_pad_state.analog_lx = data.ANA_L_H;
-                s_pad_state.analog_ly = data.ANA_L_V;
-                s_pad_state.analog_rx = data.ANA_R_H;
-                s_pad_state.analog_ry = data.ANA_R_V;
+                s_pad_state.analog_lx = ((float)data.ANA_L_H - 128.0f) / 128.0f;
+                s_pad_state.analog_ly = ((float)data.ANA_L_V - 128.0f) / 128.0f;
+                s_pad_state.analog_rx = ((float)data.ANA_R_H - 128.0f) / 128.0f;
+                s_pad_state.analog_ry = ((float)data.ANA_R_V - 128.0f) / 128.0f;
 
+                // Deadzone
                 if (s_pad_state.analog_lx > -0.15f && s_pad_state.analog_lx < 0.15f) s_pad_state.analog_lx = 0.0f;
                 if (s_pad_state.analog_ly > -0.15f && s_pad_state.analog_ly < 0.15f) s_pad_state.analog_ly = 0.0f;
+
+                // D-Pad navigation support
+                if (s_pad_state.left)  s_pad_state.analog_lx = -1.0f;
+                if (s_pad_state.right) s_pad_state.analog_lx =  1.0f;
+                if (s_pad_state.up)    s_pad_state.analog_ly = -1.0f;
+                if (s_pad_state.down)  s_pad_state.analog_ly =  1.0f;
                 break;
             }
         }

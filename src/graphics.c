@@ -117,7 +117,6 @@ bool graphics_init(void) {
         gcmSetDisplayBuffer(i, s_buffer_offsets[i], SCREEN_WIDTH * 4, SCREEN_WIDTH, SCREEN_HEIGHT);
     }
 
-    gcmSetWaitFlip(s_gcm_context);
     s_curr_buffer = 0;
     s_framebuffer = s_display_buffers[s_curr_buffer];
 
@@ -178,11 +177,16 @@ Texture* texture_load_from_file(const char* filepath) {
     }
 
     Texture* tex = (Texture*)malloc(sizeof(Texture));
+    if (!tex) {
+        stbi_image_free(data);
+        return NULL;
+    }
     tex->width = w;
     tex->height = h;
     tex->channels = 4;
-    tex->pixels = (uint32_t*)malloc(w * h * sizeof(uint32_t));
+    tex->pixels = (uint32_t*)data;
 
+    // Convert in-place from RGBA to ARGB (0xAARRGGBB) for PS3 RSX framebuffer
     for (int i = 0; i < w * h; i++) {
         uint32_t r = data[i * 4 + 0];
         uint32_t g = data[i * 4 + 1];
@@ -191,14 +195,13 @@ Texture* texture_load_from_file(const char* filepath) {
         tex->pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
     }
 
-    stbi_image_free(data);
     printf("[Graphics] Loaded PNG texture: %s (%dx%d)\n", resolved_path, w, h);
     return tex;
 }
 
 void texture_free(Texture* tex) {
     if (!tex) return;
-    if (tex->pixels) free(tex->pixels);
+    if (tex->pixels) stbi_image_free(tex->pixels);
     free(tex);
 }
 
@@ -280,8 +283,24 @@ void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_y,
     }
 }
 
+static bool s_first_flip = true;
+
+static void wait_flip(void) {
+    while (gcmGetFlipStatus() != 0) {
+        usleep(200);
+    }
+    gcmResetFlipStatus();
+}
+
 void graphics_flip(void) {
     if (!s_gcm_context) return;
+
+    if (!s_first_flip) {
+        wait_flip();
+    } else {
+        gcmResetFlipStatus();
+        s_first_flip = false;
+    }
 
     gcmSetFlip(s_gcm_context, s_curr_buffer);
     rsxFlushBuffer(s_gcm_context);

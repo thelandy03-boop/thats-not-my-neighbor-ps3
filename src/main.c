@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
         game_update(&s_game);
         game_render(&s_game);
         graphics_flip();
-        usleep(16666); // Cap at ~60 FPS
+        usleep(1000);
     }
 
     game_cleanup(&s_game);
