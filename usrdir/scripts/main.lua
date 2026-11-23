@@ -37,11 +37,33 @@ local game = {
     },
     pad_prev = {},
 
-    -- Security Booth Elements
+    -- Security Booth Elements & Smooth Shutter
     shutter_open = false,
+    shutter_progress = 0.0,
+    shutter_target = 0.0,
     alarm_cover_open = false,
     alarm_active = false,
     alarm_timer = 0.0,
+
+    -- Screen Shake System
+    shake = { x = 0, y = 0, timer = 0, intensity = 0 },
+
+    -- Doppelgänger Attack & Jumpscare State
+    attack_timer = 0,
+    attack_show_report = false,
+
+    -- D.D.D. Emergency Purge Report Dossier
+    alarm_report = nil,
+    show_alarm_report = false,
+
+    -- Persistent Agent Career Stats
+    stats = {
+        shifts_completed = 0,
+        doppels_caught = 0,
+        innocents_purged = 0,
+        nightmare_clears = 0,
+        best_rank = "-"
+    },
 
     -- Active Tenant / Visitor
     current_visitor = nil,
@@ -160,9 +182,66 @@ local function reset_checklist()
     }
 end
 
+-- Persistent Save Data Helpers
+local SAVE_FILE = "savedata.txt"
+
+local function load_save_data()
+    local f = io.open(SAVE_FILE, "r")
+    if not f then
+        f = io.open("/dev_hdd0/game/TNMN00001/USRDIR/savedata.txt", "r")
+    end
+    if not f then return end
+
+    for line in f:lines() do
+        local k, v = string.match(line, "([%w_]+)=([%w%-%_]+)")
+        if k and v then
+            if k == "shifts_completed" then game.stats.shifts_completed = tonumber(v) or 0
+            elseif k == "doppels_caught" then game.stats.doppels_caught = tonumber(v) or 0
+            elseif k == "innocents_purged" then game.stats.innocents_purged = tonumber(v) or 0
+            elseif k == "nightmare_clears" then game.stats.nightmare_clears = tonumber(v) or 0
+            elseif k == "best_rank" then game.stats.best_rank = v
+            end
+        end
+    end
+    f:close()
+end
+
+local function save_save_data()
+    local f = io.open(SAVE_FILE, "w")
+    if not f then
+        f = io.open("/dev_hdd0/game/TNMN00001/USRDIR/savedata.txt", "w")
+    end
+    if not f then return end
+
+    f:write(string.format("shifts_completed=%d\n", game.stats.shifts_completed))
+    f:write(string.format("doppels_caught=%d\n", game.stats.doppels_caught))
+    f:write(string.format("innocents_purged=%d\n", game.stats.innocents_purged))
+    f:write(string.format("nightmare_clears=%d\n", game.stats.nightmare_clears))
+    f:write(string.format("best_rank=%s\n", game.stats.best_rank))
+    f:close()
+end
+
+-- Screen Shake Helpers
+local function start_shake(intensity, duration)
+    game.shake.intensity = intensity
+    game.shake.timer = duration
+end
+
+local function update_shake()
+    if game.shake.timer > 0 then
+        game.shake.timer = game.shake.timer - 1
+        game.shake.x = math.random(-game.shake.intensity, game.shake.intensity)
+        game.shake.y = math.random(-game.shake.intensity, game.shake.intensity)
+    else
+        game.shake.x = 0
+        game.shake.y = 0
+    end
+end
+
 -- Initialize Game
 function game_init()
     log_info("Starting That's Not My Neighbor PS3 Demake...")
+    load_save_data()
     game.todays_list = neighbors.generate_todays_list()
     game.state = STATES.TITLE
     game.game_mode = "STANDARD"
@@ -171,6 +250,12 @@ function game_init()
     game.manual_page = 1
     game.title_selected_idx = 1
     game.title_anim_tick = 0
+    game.shutter_open = false
+    game.shutter_progress = 0.0
+    game.shutter_target = 0.0
+    game.attack_timer = 0
+    game.attack_show_report = false
+    game.show_alarm_report = false
     play_music("Music_Menu.ogg", true)
 
     reset_checklist()
@@ -200,6 +285,7 @@ local function spawn_next()
 
     game.current_visitor = neighbors.spawn_visitor(force_doppel, is_nightmare)
     game.shutter_open = false
+    game.shutter_target = 0.0
     game.state = STATES.WAIT_NEIGHBOR
     game.dialogue.text = ""
     game.dialogue.talking_timer = 0
@@ -219,18 +305,41 @@ local function trigger_alarm()
     if not game.current_visitor then return end
 
     play_sfx("SFX_Siren.ogg")
+    start_shake(8, 70)
     game.alarm_active = true
-    game.alarm_timer = 180 -- ~3 seconds
+    game.alarm_timer = 130 -- ~2.2 seconds of decontamination siren
+    game.shutter_open = false
+    game.shutter_target = 0.0 -- Slide shutter down to quarantine the booth
+    play_sfx("SFX_Window.wav")
     game.state = STATES.EMERGENCY_ALARM
+    game.show_alarm_report = false
 
     local is_fake = game.current_visitor.is_doppel
+    local vis = game.current_visitor
     if is_fake then
         game.doppels_eliminated = game.doppels_eliminated + 1
-        game.message_banner = "D.D.D. HA EJECUTADO AL DOPPELGANGER EXITOSAMENTE."
+        game.stats.doppels_caught = game.stats.doppels_caught + 1
+        game.alarm_report = {
+            success = true,
+            title = "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS - PROTOCOLO #3312",
+            subtitle = "ACTA OFICIAL DE PURGA: AMENAZA BIOLOGICA ELIMINADA",
+            subject = string.format("Falso residente: %s %s (Impostor)", vis.name, vis.last_name),
+            details = vis.flaws or {},
+            reward = "+100 Creditos de Servicio D.D.D. asignados a su expediente laboral."
+        }
     else
         game.innocents_killed = game.innocents_killed + 1
-        game.message_banner = "ALERTA: HAS ELIMINADO A UN INQUILINO INOCENTE."
+        game.stats.innocents_purged = game.stats.innocents_purged + 1
+        game.alarm_report = {
+            success = false,
+            title = "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS - EXPEDIENTE #3312",
+            subtitle = "NEGLIGENCIA GRAVE: INQUILINO INOCENTE PURGADO POR ERROR",
+            subject = string.format("Victima legal: %s %s (Depto %s)", vis.name, vis.last_name, vis.displayed_apt),
+            details = { "El individuo era un residente autentico con credenciales legales vigentes." },
+            reward = "SANCION DISCIPLINARIA: Falta gravísima computada a su legajo laboral."
+        }
     end
+    save_save_data()
 end
 
 -- Allow Entry
@@ -239,8 +348,10 @@ local function allow_entry()
 
     if game.current_visitor.is_doppel then
         play_sfx("SFX_Window_Break.wav")
-        play_sfx("SFX_Bite.wav")
+        start_shake(22, 60)
         game.state = STATES.DOPPEL_ATTACK
+        game.attack_timer = 0
+        game.attack_show_report = false
         game.message_banner = "¡HAS DEJADO ENTRAR A UN DOPPELGANGER! LA MUERTE ES INMINENTE."
     else
         play_sfx("SFX_Accept.wav")
@@ -290,6 +401,14 @@ end
 -- Main Update Loop (60 FPS)
 function game_update()
     local pad = get_pad_input()
+
+    -- Update screen shake and smooth shutter interpolation
+    update_shake()
+    if game.shutter_progress < game.shutter_target then
+        game.shutter_progress = math.min(game.shutter_target, game.shutter_progress + 0.07)
+    elseif game.shutter_progress > game.shutter_target then
+        game.shutter_progress = math.max(game.shutter_target, game.shutter_progress - 0.07)
+    end
 
     -- 1. Virtual Cursor Movement (Mouse or Left Analog Stick with 15% Deadzone)
     if pad.mouse_moved and pad.mouse_x and pad.mouse_y then
@@ -443,21 +562,36 @@ function game_update()
         end
 
     elseif game.state == STATES.EMERGENCY_ALARM then
-        game.alarm_timer = game.alarm_timer - 1
-        if game.alarm_timer <= 0 then
-            game.alarm_active = false
-            spawn_next()
+        if not game.show_alarm_report then
+            game.alarm_timer = game.alarm_timer - 1
+            if game.alarm_timer <= 0 then
+                game.show_alarm_report = true
+                game.alarm_active = false
+            end
+        else
+            if clicked or cancelled then
+                game.show_alarm_report = false
+                spawn_next()
+            end
         end
 
     elseif game.state == STATES.DOPPEL_ATTACK then
-        if clicked or cancelled then
+        game.attack_timer = game.attack_timer + 1
+        if game.attack_timer == 40 then
+            play_sfx("SFX_Bite.wav")
+            start_shake(26, 45)
+        elseif game.attack_timer >= 85 then
+            game.attack_show_report = true
+        end
+
+        if game.attack_show_report and (clicked or cancelled) then
             -- Return to Title Screen
             game.state = STATES.TITLE
             play_music("Music_Menu.ogg", true)
         end
 
     elseif game.state == STATES.SUMMARY_VICTORY then
-        if clicked then
+        if clicked or cancelled then
             -- Return to Title Screen after shift
             game.state = STATES.TITLE
             play_music("Music_Menu.ogg", true)
@@ -542,7 +676,7 @@ function game_update()
         -- Active security desk interaction
         if clicked then
             -- Interrogation Options (When window is open on left frame)
-            if game.shutter_open and game.current_visitor and game.current_visitor.dialogues then
+            if game.shutter_progress > 0.8 and game.current_visitor and game.current_visitor.dialogues then
                 if point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.reason) then
                     trigger_speech(game.current_visitor.dialogues.reason)
                 elseif point_in_rect(game.cursor.x, game.cursor.y, game.interrogate_buttons.id) then
@@ -555,6 +689,7 @@ function game_update()
             -- Toggle Shutter via Lever
             if point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.shutter_toggle) then
                 game.shutter_open = not game.shutter_open
+                game.shutter_target = game.shutter_open and 1.0 or 0.0
                 play_sfx("SFX_Window.wav")
                 if game.shutter_open then
                     game.state = STATES.EXAMINE
@@ -582,13 +717,13 @@ function game_update()
             end
 
             -- Inspect ID Card (Delivered to counter when shutter is open)
-            if game.shutter_open and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_id) then
+            if game.shutter_progress > 0.8 and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_id) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_DOC
             end
 
             -- Inspect Entry Request (Delivered to counter when shutter is open)
-            if game.shutter_open and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_request) then
+            if game.shutter_progress > 0.8 and game.current_visitor and point_in_rect(game.cursor.x, game.cursor.y, game.hitboxes.desk_request) then
                 play_sfx("SFX_Pick_Up_Folder.wav")
                 game.state = STATES.INSPECT_DOC
             end
@@ -827,6 +962,24 @@ local function render_title_screen()
         draw_text(340, 638, active_btn.desc, 255, 240, 160, 255)
     end
 
+    -- Service Directive Memo (Left Side)
+    draw_rect(20, 295, 315, 175, 16, 16, 20, 230)
+    draw_rect(20, 295, 315, 2, 70, 70, 80, 255)
+    draw_text(35, 312, "DIRECTIVA DE SEGURIDAD #1955", 255, 220, 100, 255)
+    draw_text(35, 342, "Puesto: Cabina Principal", 200, 200, 200, 255)
+    draw_text(35, 372, "Mision: Deteccion de Impostores", 200, 200, 200, 255)
+    draw_text(35, 402, "Alarma: Protocolo Purga 3312", 200, 200, 200, 255)
+    draw_text(35, 432, "Telefono: Central D.D.D. 3312", 200, 200, 200, 255)
+
+    -- Agent Career Service Dossier (Right Side)
+    draw_rect(945, 295, 315, 175, 16, 16, 20, 230)
+    draw_rect(945, 295, 315, 2, 70, 70, 80, 255)
+    draw_text(960, 312, "EXPEDIENTE AGENTE D.D.D.", 255, 220, 100, 255)
+    draw_text(960, 342, "Turnos Completados:  " .. game.stats.shifts_completed, 220, 220, 220, 255)
+    draw_text(960, 372, "Doppels Neutralizados: " .. game.stats.doppels_caught, 50, 220, 50, 255)
+    draw_text(960, 402, "Inocentes Purgados:    " .. game.stats.innocents_purged, 220, 60, 60, 255)
+    draw_text(960, 432, "Mejor Rango Obtenido:  " .. game.stats.best_rank, 255, 240, 120, 255)
+
     -- Bottom Controls Bar
     draw_text(260, 680, "[ D-PAD / STICK: NAVEGAR ]   [ X: CONFIRMAR ]   [ O: CANCELAR ]   [ CELL/RSX 720p 60FPS ]", 150, 150, 150, 255)
 
@@ -840,10 +993,11 @@ end
 
 -- Render Security Booth Background & Elements
 local function render_booth()
+    -- 1. Outside Scene Background
     draw_sprite("Background.png", 0, 0, 1280, 720)
 
-    -- If shutter is open, draw the visitor outside the window
-    if game.shutter_open and game.current_visitor then
+    -- 2. Visitor outside (Drawn behind the window and behind the sliding shutter)
+    if game.shutter_progress > 0.05 and game.current_visitor then
         local vis = game.current_visitor
         local tx = 520
         local ty = 140
@@ -938,19 +1092,24 @@ local function render_booth()
             draw_text(355, 52, game.dialogue.text, 255, 240, 150, 255)
         end
 
-        -- Interrogation Options Panel on Left
-        for _, btn in pairs(game.interrogate_buttons) do
-            draw_rect(btn.x, btn.y, btn.w, btn.h, 25, 25, 30, 210)
-            draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 45, 45, 55, 230)
-            draw_text(btn.x + 15, btn.y + 15, btn.label, 255, 255, 255, 255)
+        -- Interrogation Options Panel on Left (Accessible when window is sufficiently open)
+        if game.shutter_progress > 0.8 then
+            for _, btn in pairs(game.interrogate_buttons) do
+                draw_rect(btn.x, btn.y, btn.w, btn.h, 25, 25, 30, 210)
+                draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 45, 45, 55, 230)
+                draw_text(btn.x + 15, btn.y + 15, btn.label, 255, 255, 255, 255)
+            end
         end
     end
 
-    -- Booth Wall, Hatch frame, and Window
-    draw_sprite("Wall.png", 0, 0, 1280, 720)
-    if not game.shutter_open then
-        draw_sprite("Panic_window.png", 420, 85, 440, 390)
+    -- 3. Shutter sliding vertically into upper wall
+    local shutter_y = math.floor(85 - (game.shutter_progress * 390))
+    if shutter_y > -390 then
+        draw_sprite("Panic_window.png", 420, shutter_y, 440, 390)
     end
+
+    -- 4. Booth Wall, Hatch frame, and Window mask
+    draw_sprite("Wall.png", 0, 0, 1280, 720)
 
     -- Shutter Control Switch / Lever (Mounted diegetically on left window frame)
     draw_sprite("Entry_request_button.png", 320, 220, 65, 95)
@@ -1147,24 +1306,142 @@ local function render_phone_screen()
     end
 end
 
--- Render Alarm Siren Screen
+-- Render Alarm Siren Screen & D.D.D. Incident Report
 local function render_alarm_screen()
-    draw_rect(0, 0, 1280, 720, 200, 0, 0, 120)
-    draw_sprite("DDD_logo.png", 540, 200, 200, 200)
-    draw_rect(200, 460, 880, 70, 0, 0, 0, 230)
-    draw_text(260, 485, "ALARMA D.D.D. ACTIVADA - PROTOCOLO DE PURGA EN PROCESO", 255, 255, 0, 255)
+    if not game.show_alarm_report then
+        -- Draw security booth behind alarm
+        render_booth()
+
+        -- Emergency Alarm Strobe
+        local strobe = math.floor((math.sin(game.alarm_timer * 0.15) + 1.0) * 55)
+        draw_rect(0, 0, 1280, 720, 190, 20, 20, strobe + 60)
+
+        -- Shutter Quarantine Barrier across window
+        draw_rect(420, 230, 440, 90, 220, 180, 20, 235)
+        draw_rect(420, 230, 440, 90, 20, 20, 20, 255)
+        draw_text(440, 250, "PROTOCOLO DE PURGA D.D.D. #3312", 20, 20, 20, 255)
+        draw_text(450, 280, "DESCONTAMINACION BIOLOGICA EN CURSO...", 160, 20, 20, 255)
+
+        draw_sprite("DDD_logo.png", 540, 80, 200, 100)
+    else
+        -- Official D.D.D. Incident Report Folder Dossier
+        draw_rect(100, 45, 1080, 630, 10, 10, 15, 245)
+        draw_rect(130, 65, 1020, 590, 245, 240, 220, 255)
+
+        local rep = game.alarm_report
+        if rep then
+            draw_sprite("DDD_logo.png", 160, 85, 120, 60)
+            draw_text(300, 95, rep.title, 20, 20, 20, 255)
+            draw_text(300, 125, rep.subtitle, rep.success and 30 or 180, rep.success and 140 or 30, 30, 255)
+            draw_rect(160, 155, 960, 2, 80, 80, 80, 255)
+
+            draw_text(180, 185, "SUJETO INTERVENIDO:", 30, 30, 30, 255)
+            draw_text(200, 215, rep.subject, 50, 50, 50, 255)
+
+            draw_text(180, 260, "DETALLES Y ANOMALIAS IDENTIFICADAS:", 30, 30, 30, 255)
+            draw_rect(180, 285, 920, 140, 255, 250, 240, 255)
+            draw_rect(180, 285, 920, 140, 100, 100, 100, 255)
+
+            if rep.details and #rep.details > 0 then
+                for idx, detail in ipairs(rep.details) do
+                    if idx <= 3 then
+                        draw_text(200, 305 + ((idx - 1) * 35), "* " .. detail, rep.success and 30 or 180, rep.success and 120 or 30, 30, 255)
+                    end
+                end
+            else
+                draw_text(200, 335, "* Sin observaciones adicionales registradas.", 80, 80, 80, 255)
+            end
+
+            draw_text(180, 450, rep.reward, rep.success and 30 or 180, rep.success and 120 or 30, 30, 255)
+
+            -- Official Stamp Box
+            if rep.success then
+                draw_rect(760, 480, 280, 60, 30, 160, 30, 255)
+                draw_rect(764, 484, 272, 52, 245, 240, 220, 255)
+                draw_text(790, 500, "[ AMENAZA PURGADA ]", 30, 160, 30, 255)
+            else
+                draw_rect(760, 480, 280, 60, 200, 30, 30, 255)
+                draw_rect(764, 484, 272, 52, 245, 240, 220, 255)
+                draw_text(790, 500, "[ FALTA GRAVISIMA ]", 200, 30, 30, 255)
+            end
+        end
+
+        draw_rect(340, 580, 600, 45, 30, 30, 35, 240)
+        draw_text(370, 595, "PULSA (X) PARA CONTINUAR EL TURNO DE SEGURIDAD", 255, 220, 100, 255)
+    end
 end
 
--- Render Doppelgänger Attack Screen (Game Over)
+-- Render Doppelgänger Attack Screen (Game Over & Casualty Dossier)
 local function render_attack_screen()
-    draw_rect(0, 0, 1280, 720, 0, 0, 0, 255)
-    draw_sprite("Doppel_Left_Hand.png", 100, 150, 300, 450)
-    draw_sprite("Doppel_Right_Hand.png", 880, 150, 300, 450)
+    local sx, sy = game.shake.x, game.shake.y
 
-    draw_rect(240, 280, 800, 160, 50, 0, 0, 230)
-    draw_text(360, 310, "¡HAS SIDO ASESINADO POR EL DOPPELGANGER!", 255, 50, 50, 255)
-    draw_text(400, 360, "Permitiste la entrada a un ente peligroso.", 220, 220, 220, 255)
-    draw_text(440, 400, "Pulsa (X) para volver al Menu Principal.", 255, 255, 255, 255)
+    if not game.attack_show_report then
+        -- Jumpscare Phase (Violent shaking, flickering crimson, looming demonic claws)
+        local flash_red = ((game.attack_timer % 6) < 3) and 180 or 40
+        draw_rect(0, 0, 1280, 720, flash_red, 0, 0, 255)
+
+        -- Doppelgänger reaching claws
+        local reach = math.min(180, game.attack_timer * 4)
+        draw_sprite("Doppel_Left_Hand.png", 40 + sx + reach, 100 + sy, 340, 520)
+        draw_sprite("Doppel_Right_Hand.png", 900 + sx - reach, 100 + sy, 340, 520)
+
+        -- Center looming monstrosity
+        if game.current_visitor then
+            local vis = game.current_visitor
+            if vis.template.key == "ROMAN_STILNSKY" then
+                draw_sprite("Char_Roman_Doppel_Extra_Arms.png", 480 + sx, 160 + sy, 340, 300)
+                draw_sprite("Char_Roman_Doppel_Uzumaki_Face.png", 530 + sx, 180 + sy, 240, 230)
+            else
+                draw_sprite("Char_Francis_Head_Blood.png", 530 + sx, 180 + sy, 240, 230)
+            end
+        end
+
+        -- Blood vignette border
+        draw_rect(0, 0, 1280, 30, 200, 20, 20, 240)
+        draw_rect(0, 690, 1280, 30, 200, 20, 20, 240)
+        draw_rect(0, 0, 30, 720, 200, 20, 20, 240)
+        draw_rect(1250, 0, 30, 720, 200, 20, 20, 240)
+
+        draw_rect(380, 610, 520, 50, 20, 0, 0, 230)
+        draw_text(440, 625, "¡HAS SIDO EMBOSCADO POR EL DOPPELGANGER!", 255, 60, 60, 255)
+    else
+        -- Official D.D.D. Casualty Report Dossier
+        draw_rect(0, 0, 1280, 720, 12, 10, 14, 255)
+        draw_rect(100, 45, 1080, 630, 20, 15, 15, 245)
+        draw_rect(130, 65, 1020, 590, 240, 235, 215, 255)
+
+        draw_sprite("DDD_logo.png", 160, 85, 120, 60)
+        draw_text(300, 95, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS", 30, 30, 30, 255)
+        draw_text(300, 125, "EXPEDIENTE DE DECESO EN ACTO DE SERVICIO - CABINA DE SEGURIDAD", 180, 30, 30, 255)
+        draw_rect(160, 155, 960, 2, 80, 80, 80, 255)
+
+        draw_text(180, 180, "ESTADO DEL AGENTE: FALLECIDO (ASIMILADO POR ENTIDAD DESCONOCIDA)", 180, 20, 20, 255)
+
+        local vis = game.current_visitor
+        if vis then
+            draw_text(180, 220, "SUJETO ADMITIDO:", 30, 30, 30, 255)
+            draw_text(200, 250, string.format("Identidad suplantada: %s %s (Depto: %s)", vis.name, vis.last_name, vis.displayed_apt), 50, 50, 50, 255)
+
+            draw_text(180, 300, "ERRORES CRITICOS / ANOMALIAS QUE PASASTE POR ALTO:", 180, 30, 30, 255)
+            draw_rect(180, 325, 920, 160, 250, 245, 235, 255)
+            draw_rect(180, 325, 920, 160, 180, 40, 40, 255)
+
+            if vis.flaws and #vis.flaws > 0 then
+                for idx, flaw in ipairs(vis.flaws) do
+                    if idx <= 4 then
+                        draw_text(200, 345 + ((idx - 1) * 35), "[!] " .. flaw, 190, 30, 30, 255)
+                    end
+                end
+            else
+                draw_text(200, 360, "[!] Anomalia fisica grotesca o firma DDD adulterada.", 190, 30, 30, 255)
+            end
+        end
+
+        draw_text(180, 510, "DICTAMEN D.D.D.: La cabina de control sera incinerada de inmediato.", 60, 60, 60, 255)
+
+        draw_rect(340, 580, 600, 45, 30, 30, 35, 240)
+        draw_text(370, 595, "PULSA (X) O (O) PARA SALIR AL MENU PRINCIPAL", 255, 220, 100, 255)
+    end
 end
 
 -- Render Official DDD Clearance Certificate & Letter Grade
@@ -1181,6 +1458,10 @@ local function render_victory_screen()
     draw_text(260, 280, "Residentes Legítimos Admitidos:     " .. game.visitors_cleared, 30, 30, 30, 255)
     draw_text(260, 325, "Doppelgängers Neutralizados:        " .. game.doppels_eliminated, 30, 140, 30, 255)
     draw_text(260, 370, "Inocentes Eliminados por Error:     " .. game.innocents_killed, 200, 30, 30, 255)
+
+    -- Career Service Record Summary
+    draw_text(260, 420, string.format("ESTADISTICAS DE CARRERA: Turnos: %d | Doppels: %d | Rango: %s",
+        game.stats.shifts_completed, game.stats.doppels_caught, game.stats.best_rank), 80, 80, 80, 255)
 
     -- Rank Calculation
     local rank_letter = "S"
@@ -1224,6 +1505,14 @@ local function is_cursor_interactive()
         return false
     end
 
+    if game.state == STATES.DOPPEL_ATTACK then
+        return game.attack_show_report
+    end
+
+    if game.state == STATES.EMERGENCY_ALARM then
+        return game.show_alarm_report
+    end
+
     if game.state == STATES.WAIT_NEIGHBOR or game.state == STATES.EXAMINE then
         if point_in_rect(cx, cy, game.hitboxes.shutter_toggle) then return true end
         if point_in_rect(cx, cy, game.hitboxes.door_unlock) then return true end
@@ -1232,7 +1521,7 @@ local function is_cursor_interactive()
         if point_in_rect(cx, cy, game.hitboxes.alarm_cover) then return true end
         if game.alarm_cover_open and point_in_rect(cx, cy, game.hitboxes.alarm_button) then return true end
 
-        if game.shutter_open and game.current_visitor then
+        if game.shutter_progress > 0.8 and game.current_visitor then
             if point_in_rect(cx, cy, game.hitboxes.desk_id) then return true end
             if point_in_rect(cx, cy, game.hitboxes.desk_request) then return true end
             for _, btn in pairs(game.interrogate_buttons) do
@@ -1261,6 +1550,8 @@ function game_render()
         render_title_screen()
     elseif game.state == STATES.DOPPEL_ATTACK then
         render_attack_screen()
+    elseif game.state == STATES.EMERGENCY_ALARM then
+        render_alarm_screen()
     elseif game.state == STATES.SUMMARY_VICTORY then
         render_victory_screen()
     else
@@ -1276,10 +1567,6 @@ function game_render()
             render_checklist_overlay()
         elseif game.state == STATES.PHONE_CALL then
             render_phone_screen()
-        end
-
-        if game.alarm_active then
-            render_alarm_screen()
         end
 
         -- Message Notification Banner at Top
