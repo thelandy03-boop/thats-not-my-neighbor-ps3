@@ -1,10 +1,11 @@
 -- That's Not My Neighbor - PS3 Demake
--- main.lua: Core Game Loop, State Controller, Interrogation, and Security Desk
+-- main.lua: Core Game Loop, State Controller, Interrogation, Title Screen, and Security Desk
 
 local neighbors = require("neighbors")
 
 -- Game States
 local STATES = {
+    TITLE             = 0, -- Title Screen & Main Menu
     WAIT_NEIGHBOR     = 1, -- Shutter closed, waiting for next tenant
     EXAMINE           = 2, -- Shutter open, neighbor outside, papers on desk
     INSPECT_DOC       = 3, -- Examining ID Card or Entry Request up close
@@ -20,7 +21,8 @@ local STATES = {
 -- Global Game Context
 local game = {
     running = true,
-    state = STATES.WAIT_NEIGHBOR,
+    state = STATES.TITLE,
+    show_controls_modal = false,
 
     -- Virtual Cursor
     cursor = {
@@ -65,6 +67,13 @@ local game = {
         dialed = "",
         calling = false,
         response_text = ""
+    },
+
+    -- Title Screen Buttons
+    title_buttons = {
+        start    = { x = 420, y = 370, w = 440, h = 55, label = "INICIAR TURNO DE SEGURIDAD" },
+        controls = { x = 420, y = 445, w = 440, h = 55, label = "MANUAL Y CONTROLES DUALSHOCK 3" },
+        exit     = { x = 420, y = 520, w = 440, h = 55, label = "SALIR AL XMB" }
     },
 
     -- UI Hitboxes on Desk (X, Y, Width, Height)
@@ -115,6 +124,12 @@ local game = {
     banner_timer = 300
 }
 
+-- Point-in-Rectangle Collision Helper
+local function point_in_rect(px, py, rect)
+    return px >= rect.x and px <= (rect.x + rect.w) and
+           py >= rect.y and py <= (rect.y + rect.h)
+end
+
 -- Trigger Speech Dialogue with Mouth Animation
 local function trigger_speech(text)
     if not text then return end
@@ -137,20 +152,16 @@ local function reset_checklist()
     }
 end
 
--- Point-in-Rectangle Collision Helper
-local function point_in_rect(px, py, rect)
-    return px >= rect.x and px <= (rect.x + rect.w) and
-           py >= rect.y and py <= (rect.y + rect.h)
-end
-
 -- Initialize Game
 function game_init()
     log_info("Starting That's Not My Neighbor PS3 Demake...")
     game.todays_list = neighbors.generate_todays_list()
-    play_music("Music_Dark.ogg", true)
+    game.state = STATES.TITLE
+    game.show_controls_modal = false
+    play_music("Music_Menu.ogg", true)
 
     reset_checklist()
-    game.current_visitor = neighbors.spawn_visitor(false)
+    game.current_visitor = nil
 end
 
 function game_is_running()
@@ -294,7 +305,33 @@ function game_update()
     end
 
     -- 2. State-Specific Updates
-    if game.state == STATES.EMERGENCY_ALARM then
+    if game.state == STATES.TITLE then
+        if game.show_controls_modal then
+            if clicked or cancelled then
+                game.show_controls_modal = false
+                play_sfx("SFX_Pick_Up_Folder.wav")
+            end
+        else
+            if clicked then
+                if point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.start) then
+                    play_sfx("SFX_Accept.wav")
+                    play_music("Music_Dark.ogg", true)
+                    game.visitor_queue = 5
+                    game.visitors_cleared = 0
+                    game.doppels_eliminated = 0
+                    game.innocents_killed = 0
+                    spawn_next()
+                elseif point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.controls) then
+                    play_sfx("SFX_Select.wav")
+                    game.show_controls_modal = true
+                elseif point_in_rect(game.cursor.x, game.cursor.y, game.title_buttons.exit) then
+                    play_sfx("SFX_Hang_Down_Phone.wav")
+                    exit_game()
+                end
+            end
+        end
+
+    elseif game.state == STATES.EMERGENCY_ALARM then
         game.alarm_timer = game.alarm_timer - 1
         if game.alarm_timer <= 0 then
             game.alarm_active = false
@@ -303,20 +340,16 @@ function game_update()
 
     elseif game.state == STATES.DOPPEL_ATTACK then
         if clicked or cancelled then
-            game.visitor_queue = 5
-            game.visitors_cleared = 0
-            game.doppels_eliminated = 0
-            game.innocents_killed = 0
-            spawn_next()
+            -- Return to Title Screen
+            game.state = STATES.TITLE
+            play_music("Music_Menu.ogg", true)
         end
 
     elseif game.state == STATES.SUMMARY_VICTORY then
         if clicked then
-            game.visitor_queue = 5
-            game.visitors_cleared = 0
-            game.doppels_eliminated = 0
-            game.innocents_killed = 0
-            spawn_next()
+            -- Return to Title Screen after shift
+            game.state = STATES.TITLE
+            play_music("Music_Menu.ogg", true)
         end
 
     elseif game.state == STATES.INSPECT_DOC or game.state == STATES.INSPECT_LIST then
@@ -487,6 +520,60 @@ function game_update()
 
     -- Save previous pad state for single-click detection
     game.pad_prev = pad
+end
+
+-- Render Title Screen & Main Menu
+local function render_title_screen()
+    -- Atmosphere Dark Wall Base
+    draw_rect(0, 0, 1280, 720, 14, 12, 16, 255)
+    draw_sprite("Wall.png", 0, 0, 1280, 720)
+    draw_rect(0, 0, 1280, 720, 0, 0, 0, 170)
+
+    -- Official Banner & D.D.D. Logo
+    draw_sprite("DDD_logo.png", 530, 40, 220, 110)
+    draw_sprite("banner.png", 528, 160, 224, 172)
+
+    -- Title Typography
+    draw_text(440, 165, "THAT'S NOT MY NEIGHBOR", 255, 230, 80, 255)
+    draw_text(500, 195, "DEMAKE PLAYSTATION 3", 220, 220, 220, 255)
+    draw_text(380, 225, "DEPARTAMENTO DE DETECCION DE DOPPELGANGERS", 200, 40, 40, 255)
+
+    -- Interactive Buttons
+    for _, btn in pairs(game.title_buttons) do
+        local hovered = point_in_rect(game.cursor.x, game.cursor.y, btn)
+        if hovered then
+            draw_rect(btn.x - 4, btn.y - 4, btn.w + 8, btn.h + 8, 255, 220, 80, 255)
+            draw_rect(btn.x, btn.y, btn.w, btn.h, 60, 50, 40, 255)
+            draw_text(btn.x + 35, btn.y + 20, btn.label, 255, 240, 120, 255)
+        else
+            draw_rect(btn.x, btn.y, btn.w, btn.h, 30, 25, 25, 230)
+            draw_rect(btn.x + 2, btn.y + 2, btn.w - 4, btn.h - 4, 20, 18, 18, 240)
+            draw_text(btn.x + 35, btn.y + 20, btn.label, 220, 220, 220, 255)
+        end
+    end
+
+    -- Controls Modal Dialog
+    if game.show_controls_modal then
+        draw_rect(160, 80, 960, 560, 10, 10, 15, 250)
+        draw_rect(180, 100, 920, 520, 240, 235, 215, 255)
+
+        draw_text(420, 130, "MANUAL DE PROCEDIMIENTOS D.D.D.", 20, 20, 20, 255)
+        draw_text(380, 160, "CONTROLES DUALSHOCK 3 DE LA CABINA", 50, 50, 50, 255)
+        draw_rect(220, 190, 840, 2, 80, 80, 80, 255)
+
+        draw_text(240, 220, "* STICK IZQUIERDO / D-PAD: Mover el cursor por el escritorio", 30, 30, 30, 255)
+        draw_text(240, 265, "* BOTON CRUZ (X):          Interactuar, abrir persiana, marcar y cotejar", 30, 30, 30, 255)
+        draw_text(240, 310, "* BOTON CIRCULO (O):       Cerrar documentos inspeccionados / Colgar telefono", 30, 30, 30, 255)
+        draw_text(240, 355, "* BOTONES L1 / R1:         Cambiar de piso en la Carpeta de Vecinos", 30, 30, 30, 255)
+        draw_text(240, 400, "* TELEFONO DE DISCO:       Marcar 3312 para D.D.D. o el numero del departamento", 30, 30, 30, 255)
+        draw_text(240, 445, "* ALARMA DE EMERGENCIA:    Levantar tapa protectora y pulsar boton rojo", 180, 20, 20, 255)
+        draw_text(240, 490, "* START + SELECT:          Salida limpia al menu principal XMB", 60, 60, 60, 255)
+
+        draw_rect(440, 550, 400, 40, 30, 30, 30, 230)
+        draw_text(465, 562, "PULSA (X) O (O) PARA CERRAR MANUAL", 255, 255, 255, 255)
+    end
+
+    draw_text(340, 680, "PSL1GHT v2  |  RSX 720p Tiny3D  |  Lua 5.4  |  D.D.D. 1955", 130, 130, 130, 255)
 end
 
 -- Render Security Booth Background & Elements
@@ -769,7 +856,7 @@ local function render_attack_screen()
     draw_rect(240, 280, 800, 160, 50, 0, 0, 230)
     draw_text(360, 310, "¡HAS SIDO ASESINADO POR EL DOPPELGANGER!", 255, 50, 50, 255)
     draw_text(400, 360, "Permitiste la entrada a un ente peligroso.", 220, 220, 220, 255)
-    draw_text(440, 400, "Pulsa (X) para reiniciar el turno.", 255, 255, 255, 255)
+    draw_text(440, 400, "Pulsa (X) para volver al Menu Principal.", 255, 255, 255, 255)
 end
 
 -- Render Official DDD Clearance Certificate & Letter Grade
@@ -815,12 +902,14 @@ local function render_victory_screen()
     draw_text(775, 360, rank_text, rank_color_r, rank_color_g, rank_color_b, 255)
 
     draw_rect(400, 560, 480, 45, 20, 20, 20, 230)
-    draw_text(440, 575, "PULSA (X) PARA INICIAR UN NUEVO TURNO", 255, 255, 0, 255)
+    draw_text(430, 575, "PULSA (X) PARA VOLVER AL MENU PRINCIPAL", 255, 255, 0, 255)
 end
 
 -- Main Render Loop (called every frame from C)
 function game_render()
-    if game.state == STATES.DOPPEL_ATTACK then
+    if game.state == STATES.TITLE then
+        render_title_screen()
+    elseif game.state == STATES.DOPPEL_ATTACK then
         render_attack_screen()
     elseif game.state == STATES.SUMMARY_VICTORY then
         render_victory_screen()

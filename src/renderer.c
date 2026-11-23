@@ -72,6 +72,14 @@ const char* renderer_resolve_path(const char* filepath, char* buffer, size_t buf
         return filepath;
     }
 
+    // Check usrdir/assets/
+    snprintf(buffer, buf_size, "usrdir/assets/%s", filepath);
+    f = fopen(buffer, "rb");
+    if (f) {
+        fclose(f);
+        return buffer;
+    }
+
     // Check usrdir/assets/gfx/
     snprintf(buffer, buf_size, "usrdir/assets/gfx/%s", filepath);
     f = fopen(buffer, "rb");
