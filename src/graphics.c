@@ -3,6 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if __has_include(<SDL2/SDL.h>)
+#include <SDL2/SDL.h>
+#define HAVE_SDL2 1
+#elif __has_include(<SDL.h>)
+#include <SDL.h>
+#define HAVE_SDL2 1
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO_DISABLED
 #define STBI_ONLY_PNG
@@ -10,6 +18,34 @@
 
 // 1920x1080 32-bit Framebuffer (~8.3 MB)
 static uint32_t* s_framebuffer = NULL;
+
+#ifdef HAVE_SDL2
+static SDL_Window* s_sdl_window = NULL;
+static SDL_Renderer* s_sdl_renderer = NULL;
+static SDL_Texture* s_sdl_texture = NULL;
+#endif
+
+static const char* resolve_asset_path(const char* filepath, char* buffer, size_t buf_size) {
+    if (!filepath) return NULL;
+    FILE* f = fopen(filepath, "rb");
+    if (f) {
+        fclose(f);
+        return filepath;
+    }
+    snprintf(buffer, buf_size, "/app_home/%s", filepath);
+    f = fopen(buffer, "rb");
+    if (f) {
+        fclose(f);
+        return buffer;
+    }
+    snprintf(buffer, buf_size, "/dev_hdd0/game/TNMN00001/USRDIR/%s", filepath);
+    f = fopen(buffer, "rb");
+    if (f) {
+        fclose(f);
+        return buffer;
+    }
+    return filepath;
+}
 
 static inline uint32_t blend_pixel(uint32_t dst, uint32_t src) {
     uint32_t a = (src >> 24) & 0xFF;
@@ -40,6 +76,20 @@ bool graphics_init(void) {
         }
     }
     graphics_clear(0xFF181410);
+
+#ifdef HAVE_SDL2
+    if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+        s_sdl_window = SDL_CreateWindow("That's Not My Neighbor", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+        if (s_sdl_window) {
+            s_sdl_renderer = SDL_CreateRenderer(s_sdl_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+            if (s_sdl_renderer) {
+                s_sdl_texture = SDL_CreateTexture(s_sdl_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
+            }
+        }
+        printf("[Graphics] SDL2 Video subsystem initialized.\n");
+    }
+#endif
+
     printf("[Graphics] Native 1080p framebuffer (1920x1080) initialized successfully.\n");
     return true;
 }
@@ -86,10 +136,13 @@ void graphics_draw_text(int x, int y, const char* text, uint32_t color) {
 }
 
 Texture* texture_load_from_file(const char* filepath) {
+    char path_buf[512];
+    const char* resolved_path = resolve_asset_path(filepath, path_buf, sizeof(path_buf));
+
     int w, h, channels;
-    unsigned char* data = stbi_load(filepath, &w, &h, &channels, 4);
+    unsigned char* data = stbi_load(resolved_path, &w, &h, &channels, 4);
     if (!data) {
-        printf("[Graphics] Failed to load PNG texture: %s (Reason: %s)\n", filepath, stbi_failure_reason());
+        printf("[Graphics] Failed to load PNG texture: %s (Reason: %s)\n", resolved_path, stbi_failure_reason());
         return NULL;
     }
 
@@ -99,7 +152,7 @@ Texture* texture_load_from_file(const char* filepath) {
     tex->channels = 4;
     tex->pixels = (uint32_t*)malloc(w * h * sizeof(uint32_t));
 
-    // Convert RGBA bytes to 32-bit ARGB/RGBA format
+    // Convert RGBA bytes to 32-bit ARGB format
     for (int i = 0; i < w * h; i++) {
         uint32_t r = data[i * 4 + 0];
         uint32_t g = data[i * 4 + 1];
@@ -109,7 +162,7 @@ Texture* texture_load_from_file(const char* filepath) {
     }
 
     stbi_image_free(data);
-    printf("[Graphics] Loaded PNG texture: %s (%dx%d)\n", filepath, w, h);
+    printf("[Graphics] Loaded PNG texture: %s (%dx%d)\n", resolved_path, w, h);
     return tex;
 }
 
@@ -196,10 +249,24 @@ void graphics_draw_texture_clipped(const Texture* tex, int x, int y, int clip_y,
 }
 
 void graphics_flip(void) {
-    // In PSL1GHT hardware: copies s_framebuffer to RSX scanout buffer or flips RSX display buffer
+#ifdef HAVE_SDL2
+    if (s_sdl_renderer && s_sdl_texture && s_framebuffer) {
+        SDL_UpdateTexture(s_sdl_texture, NULL, s_framebuffer, SCREEN_WIDTH * sizeof(uint32_t));
+        SDL_RenderClear(s_sdl_renderer);
+        SDL_RenderCopy(s_sdl_renderer, s_sdl_texture, NULL, NULL);
+        SDL_RenderPresent(s_sdl_renderer);
+    }
+#endif
 }
 
 void graphics_cleanup(void) {
+#ifdef HAVE_SDL2
+    if (s_sdl_texture)  { SDL_DestroyTexture(s_sdl_texture);   s_sdl_texture = NULL; }
+    if (s_sdl_renderer) { SDL_DestroyRenderer(s_sdl_renderer); s_sdl_renderer = NULL; }
+    if (s_sdl_window)   { SDL_DestroyWindow(s_sdl_window);     s_sdl_window = NULL; }
+    SDL_Quit();
+#endif
+
     if (s_framebuffer) {
         free(s_framebuffer);
         s_framebuffer = NULL;

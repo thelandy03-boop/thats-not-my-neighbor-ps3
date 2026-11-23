@@ -15,9 +15,12 @@ APP_VER		:= 01.00
 PS3DEV		?= /usr/local/ps3dev
 PORTLIBS	?= $(PS3DEV)/portlibs/ppu
 
-INCLUDES	:= -Iinclude -I$(PS3DEV)/include -I$(PORTLIBS)/include -I$(PS3DEV)/ppu/include
+SDL_CFLAGS	:= $(shell $(PORTLIBS)/bin/sdl2-config --cflags 2>/dev/null || echo "-I$(PORTLIBS)/include/SDL2")
+SDL_LIBS	:= $(shell $(PORTLIBS)/bin/sdl2-config --libs 2>/dev/null || echo "-lSDL2 -lsysmodule")
+
+INCLUDES	:= -Iinclude -I$(PS3DEV)/include -I$(PORTLIBS)/include $(SDL_CFLAGS) -I$(PS3DEV)/ppu/include
 LIBDIRS		:= -L$(PS3DEV)/lib -L$(PORTLIBS)/lib -L$(PS3DEV)/ppu/lib
-LIBS		:= -lsysutil -lio -laudio -lm -lc
+LIBS		:= $(SDL_LIBS) -lsysutil -lio -laudio -lm -lc
 
 CFLAGS		:= -O2 -Wall -mcpu=cell $(INCLUDES)
 SRC_FILES	:= $(wildcard src/*.c)
