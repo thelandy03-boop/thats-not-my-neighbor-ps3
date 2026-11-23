@@ -1,0 +1,17 @@
+# Build Makefile invoked inside build/
+include $(PSL1GHT)/Makefile.base
+
+TARGET		:= ../thats-not-my-neighbor
+
+all: $(TARGET).self
+
+$(TARGET).self: $(TARGET).elf
+	@make_self $< $@
+
+$(TARGET).elf: $(OFILES)
+	@echo "Linking $(TARGET).elf..."
+	@$(CC) $(OFILES) $(LIBDIRS) $(LIBS) -o $@
+
+%.o: %.c
+	@echo "Compiling $<..."
+	@$(CC) $(CFLAGS) -c $< -o $@
