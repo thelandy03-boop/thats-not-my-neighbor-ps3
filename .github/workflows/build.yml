@@ -1,0 +1,47 @@
+name: Build PS3 Package (Docker)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Permite compilar manualmente con un clic en GitHub
+
+jobs:
+  build-ps3:
+    name: Compile Homebrew PKG
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ps3dev/ps3dev:master
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup PS3 Toolchain Environment
+        run: |
+          echo "PS3DEV=/usr/local/ps3dev" >> $GITHUB_ENV
+          echo "PSL1GHT=/usr/local/ps3dev" >> $GITHUB_ENV
+          echo "PORTLIBS=/usr/local/ps3dev/portlibs/ppu" >> $GITHUB_ENV
+          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
+          echo "/usr/local/ps3dev/ppu/bin" >> $GITHUB_PATH
+
+      - name: Compile SELF & EBOOT.BIN
+        run: |
+          make clean
+          make
+
+      - name: Build Installable PS3 PKG
+        run: |
+          make pkg || true
+          ls -la
+
+      - name: Upload PS3 Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: thats-not-my-neighbor-ps3-build
+          path: |
+            *.pkg
+            *.self
+            *.elf
+          if-no-files-found: warn
