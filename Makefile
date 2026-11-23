@@ -49,6 +49,7 @@ $(TARGET).pkg: $(TARGET).self
 	@echo "Creating PKG..."
 	@mkdir -p pkg/USRDIR
 	@cp $(TARGET).self pkg/USRDIR/EBOOT.BIN
+	@cp -r assets pkg/USRDIR/
 	@make_sfo --title "$(APP_NAME)" --appid "$(TITLE_ID)" --version "$(APP_VER)" ps3/PARAM.SFO
 	@cp ps3/PARAM.SFO pkg/PARAM.SFO
 	@if [ -f ps3/ICON0.PNG ]; then cp ps3/ICON0.PNG pkg/ICON0.PNG; fi
