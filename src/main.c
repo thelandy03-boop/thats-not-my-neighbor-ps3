@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
 
 #if defined(__CELLOS_LV2__) || defined(_PS3)
     // Register sysutil callback to cleanly handle PS button
-    sysutilRegisterCallback(0, sysutil_exit_callback, NULL);
+    sysUtilRegisterCallback(0, sysutil_exit_callback, NULL);
     ioPadInit(7);
 #endif
 
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
     bool running = true;
     while (running) {
 #if defined(__CELLOS_LV2__) || defined(_PS3)
-        sysutilCheckCallback();
+        sysUtilCheckCallback();
 #endif
         // Poll DualShock 3 controller
         lua_bridge_poll_pad();
@@ -208,7 +208,7 @@ int main(int argc, char* argv[]) {
     audio_cleanup();
 #if defined(__CELLOS_LV2__) || defined(_PS3)
     ioPadEnd();
-    sysutilUnregisterCallback(0);
+    sysUtilUnregisterCallback(0);
 #endif
     renderer_cleanup();
 

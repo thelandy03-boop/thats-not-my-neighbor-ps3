@@ -40,8 +40,8 @@ static inline void tiny3d_VertexColor(u32 rgba) { (void)rgba; }
 static inline void tiny3d_VertexTexture(float u, float v) { (void)u; (void)v; }
 static inline void tiny3d_End(void) {}
 static inline void tiny3d_Flip(void) {}
-static inline u32 tiny3d_AllocTexture(u32 size) { (void)size; return 0; }
-static inline void* tiny3d_TexturePointer(u32 offset) { (void)offset; return NULL; }
+static inline void* tiny3d_AllocTexture(u32 size) { (void)size; return NULL; }
+static inline u32 tiny3d_TextureOffset(void* ptr) { (void)ptr; return 0; }
 static inline void tiny3d_SetTexture(u32 unit, u32 offset, u32 width, u32 height, u32 stride, u32 format, int smooth) {
     (void)unit; (void)offset; (void)width; (void)height; (void)stride; (void)format; (void)smooth;
 }
@@ -177,11 +177,10 @@ static CachedTexture* get_or_load_texture(const char* name) {
     uint32_t texture_size = w * h * 4;
 
 #if defined(__CELLOS_LV2__) || defined(_PS3)
-    // Allocate RSX texture buffer (16-byte aligned)
-    tex->rsx_offset = tiny3d_AllocTexture(texture_size);
-    void* rsx_ptr = tiny3d_TexturePointer(tex->rsx_offset);
-
+    // Allocate RSX texture buffer
+    void* rsx_ptr = tiny3d_AllocTexture(texture_size);
     if (rsx_ptr) {
+        tex->rsx_offset = tiny3d_TextureOffset(rsx_ptr);
         // Convert RGBA to ARGB (0xAARRGGBB) for Tiny3D RSX format
         uint32_t* dst = (uint32_t*)rsx_ptr;
         for (int i = 0; i < w * h; i++) {
@@ -195,6 +194,7 @@ static CachedTexture* get_or_load_texture(const char* name) {
         tex->host_pixels = NULL;
     } else {
         tex->host_pixels = raw_rgba;
+        tex->rsx_offset = 0;
     }
 #else
     tex->host_pixels = raw_rgba;
